@@ -23,10 +23,15 @@ export function GameStage({ game, onFinish }: GameStageProps) {
       backgroundColor: '#f7f4e9',
       scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH, width: 480, height: 720 },
       input: { activePointers: 4 },
-      scene: [ArcadeScene],
+      scene: [],
       render: { antialias: true, pixelArt: false, roundPixels: true },
     });
-    instance.events.once('ready', () => instance.scene.start('arcade-run', { game, onFinish: (result: RunResult) => callbackRef.current(result) }));
+    instance.events.once('ready', () => {
+      instance.scene.add('arcade-run', ArcadeScene, true, {
+        game,
+        onFinish: (result: RunResult) => callbackRef.current(result),
+      });
+    });
     return () => instance.destroy(true);
   }, [game]);
 
