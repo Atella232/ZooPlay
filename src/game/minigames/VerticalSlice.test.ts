@@ -40,6 +40,8 @@ const dedicatedIds = [
   'medusa-a-partes-iguales', 'rastro-del-caracol', 'colibri-reflejos',
   'serpiente-glotona', 'panda-lenador', 'hormiga-zigzag',
   'carrera-de-galgos', 'correcaminos', 'hamster-al-volante',
+  'jardin-de-luciernagas', 'ciguena-repartidora', 'gato-pianista',
+  'vencejo-veloz', 'cangrejo-interruptor', 'pajaro-carpintero', 'golondrina-cazadora',
 ];
 
 describe('controladores específicos del catálogo', () => {
@@ -153,5 +155,26 @@ describe('controladores específicos del catálogo', () => {
     expect(result?.score).toBeGreaterThan(0);
     expect(result?.score).toBeLessThan(20);
     expect(result?.accuracy).toBe(1);
+  });
+
+  it.each(['jardin-de-luciernagas', 'ciguena-repartidora', 'gato-pianista', 'vencejo-veloz', 'cangrejo-interruptor', 'pajaro-carpintero', 'golondrina-cazadora'])(
+    '%s termina una partida cronometrada', (id) => {
+      let result: RunResult | undefined;
+      const controller = createController(id, (value) => { result = value; });
+      controller.create();
+      controller.update(60_000);
+      expect(result).toMatchObject({ elapsedMs: 60_000 });
+    },
+  );
+
+  it('el Pájaro Carpintero cuenta cada toque al tronco', () => {
+    let result: RunResult | undefined;
+    const controller = createController('pajaro-carpintero', (value) => { result = value; });
+    controller.create();
+    controller.pointerDown(240, 380);
+    controller.pointerDown(240, 380);
+    controller.pointerDown(240, 380);
+    controller.update(60_000);
+    expect(result).toMatchObject({ score: 3, accuracy: 1 });
   });
 });
