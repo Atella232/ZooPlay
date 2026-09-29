@@ -5,6 +5,7 @@ import { createMemoryTypingGame } from './MemoryTypingGames';
 import { createPrecisionGame } from './PrecisionGames';
 import { createArcadeMotionGame } from './ArcadeMotionGames';
 import { createFastActionGame } from './FastActionGames';
+import { createArcadeSkillGame } from './ArcadeSkillGames';
 
 export interface DedicatedGame {
   create(): void;
@@ -32,6 +33,11 @@ function drawDirectionPad(graphics: Phaser.GameObjects.Graphics): void {
 export function createVerticalSliceGame(scene: Phaser.Scene, game: GameManifest, onFinish: Finish): DedicatedGame | undefined {
   const args: [Phaser.Scene, GameManifest, Finish] = [scene, game, onFinish];
   switch (game.id) {
+    case 'libelula-espacial':
+    case 'abejorro-propulsado':
+    case 'rana-saltarina':
+    case 'gecko-trepador':
+    case 'canguro-trampolin': return createArcadeSkillGame(...args);
     case 'jardin-de-luciernagas':
     case 'ciguena-repartidora':
     case 'gato-pianista':

@@ -42,6 +42,7 @@ const dedicatedIds = [
   'carrera-de-galgos', 'correcaminos', 'hamster-al-volante',
   'jardin-de-luciernagas', 'ciguena-repartidora', 'gato-pianista',
   'vencejo-veloz', 'cangrejo-interruptor', 'pajaro-carpintero', 'golondrina-cazadora',
+  'libelula-espacial', 'abejorro-propulsado', 'rana-saltarina', 'gecko-trepador', 'canguro-trampolin',
 ];
 
 describe('controladores específicos del catálogo', () => {
@@ -176,5 +177,27 @@ describe('controladores específicos del catálogo', () => {
     controller.pointerDown(240, 380);
     controller.update(60_000);
     expect(result).toMatchObject({ score: 3, accuracy: 1 });
+  });
+
+  it.each(['libelula-espacial', 'abejorro-propulsado', 'rana-saltarina', 'gecko-trepador', 'canguro-trampolin'])(
+    '%s termina una partida cronometrada', (id) => {
+      let result: RunResult | undefined;
+      const controller = createController(id, (value) => { result = value; });
+      controller.create();
+      controller.update(60_000);
+      expect(result).toMatchObject({ elapsedMs: 60_000 });
+    },
+  );
+
+  it('la Rana salta ajustando el tiempo de carga', () => {
+    let result: RunResult | undefined;
+    const controller = createController('rana-saltarina', (value) => { result = value; });
+    controller.create();
+    controller.pointerDown(132, 440);
+    controller.update(920);
+    controller.pointerUp(333, 360);
+    controller.update(60_000);
+    expect(result?.score).toBeGreaterThanOrEqual(9);
+    expect(result?.accuracy).toBe(1);
   });
 });
