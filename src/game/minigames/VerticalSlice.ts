@@ -34,6 +34,11 @@ export function createVerticalSliceGame(scene: Phaser.Scene, game: GameManifest,
     case 'raton-de-laberinto': return new MouseMazeGame(...args);
     case 'panal-de-la-abeja': return new BeePatternGame(...args);
     case 'pulpo-camuflaje': return new OctopusColorGame(...args);
+    case 'gallo-puntual': return new RoosterClockGame(...args);
+    case 'marmota-cronometro': return new MarmotClockGame(...args);
+    case 'sepia-reflejos': return new CuttlefishReflexGame(...args);
+    case 'paloma-mensajera': return new PigeonMailGame(...args);
+    case 'grillo-ritmico': return new CricketRhythmGame(...args);
     default: return undefined;
   }
 }
@@ -46,6 +51,8 @@ abstract class MiniGame implements DedicatedGame {
   protected feedbackText!: Phaser.GameObjects.Text;
   protected elapsedMs = 0;
   protected ended = false;
+  private glyphs: Phaser.GameObjects.Text[] = [];
+  private glyphCursor = 0;
 
   constructor(protected scene: Phaser.Scene, protected game: GameManifest, protected onFinish: Finish) {}
 
@@ -76,6 +83,21 @@ abstract class MiniGame implements DedicatedGame {
     this.scoreText.setText(`${this.game.metric}: ${formatted} ${unit}`.trim());
   }
 
+  protected beginGlyphFrame(): void {
+    this.glyphCursor = 0;
+    this.glyphs.forEach((glyph) => glyph.setVisible(false));
+  }
+
+  protected glyphText(text: string, x: number, y: number, size: number, color: string, fontFamily = 'DM Sans, sans-serif'): void {
+    let glyph = this.glyphs[this.glyphCursor];
+    if (!glyph) {
+      glyph = this.scene.add.text(-100, -100, '', { fontFamily, fontSize: `${size}px`, color, align: 'center' }).setOrigin(0.5).setDepth(4);
+      this.glyphs.push(glyph);
+    }
+    glyph.setText(text).setPosition(x, y).setStyle({ fontFamily, fontSize: `${size}px`, color, align: 'center' }).setVisible(true);
+    this.glyphCursor += 1;
+  }
+
   protected finish(score: number, accuracy: number): void {
     if (this.ended) return;
     this.ended = true;
@@ -94,6 +116,319 @@ abstract class MiniGame implements DedicatedGame {
   pointerMove(_x: number, _y: number, _isDown: boolean): void {}
   pointerUp(_x: number, _y: number): void {}
   keyDown(_event: KeyboardEvent): void {}
+}
+
+class RoosterClockGame extends MiniGame {
+  private round = 1;
+  private roundMs = 0;
+  private deviations: number[] = [];
+  private targetMs = 7000;
+
+  create(): void {
+    this.chrome('Detén el reloj cuando marque 7,00 segundos. Son cinco rondas.');
+    this.promptText.setY(198);
+    this.drawClock();
+  }
+
+  update(delta: number): void {
+    if (this.ended) return;
+    this.elapsedMs += delta;
+    this.roundMs += delta;
+    this.timerText.setText(this.timeLabel(Math.max(0, this.game.durationSec * 1000 - this.elapsedMs)));
+    this.drawClock();
+    if (this.roundMs >= 9000) this.stopRound();
+    if (this.elapsedMs >= this.game.durationSec * 1000) this.complete();
+  }
+
+  private drawClock(): void {
+    this.beginGlyphFrame();
+    const g = this.graphics;
+    g.clear();
+    g.fillStyle(0xf1eee4).fillRoundedRect(74, 277, 332, 173, 24);
+    const progress = Phaser.Math.Clamp(this.roundMs / 9000, 0, 1);
+    g.fillStyle(0xe3ded1).fillRoundedRect(96, 408, 288, 17, 9);
+    g.fillStyle(this.roundMs >= this.targetMs ? 0x71a67f : 0xe4b957).fillRoundedRect(96, 408, 288 * progress, 17, 9);
+    const shown = (this.roundMs / 1000).toFixed(2);
+    this.promptText.setText(`Ronda ${this.round} de 5 · objetivo 7,00 s`);
+    this.scoreLabel(this.deviations.length ? this.deviations.reduce((a, b) => a + b, 0) / this.deviations.length : 0, 's de desviación');
+    this.glyphText(shown, 240, 349, 48, '#263d34', 'DM Mono, monospace');
+    this.glyphText('TOCA PARA PARAR', 240, 466, 14, '#718176', 'DM Mono, monospace');
+  }
+
+  private stopRound(): void {
+    if (this.ended || this.round > 5) return;
+    this.deviations.push(Math.abs(this.roundMs - this.targetMs) / 1000);
+    this.feedbackText.setText(`Desviación: ${this.deviations[this.deviations.length - 1].toFixed(2)} s`);
+    this.round += 1;
+    this.roundMs = 0;
+    if (this.deviations.length >= 5) this.complete();
+  }
+
+  private complete(): void {
+    if (!this.deviations.length) this.deviations.push(Math.abs(this.roundMs - this.targetMs) / 1000);
+    const mean = this.deviations.reduce((a, b) => a + b, 0) / this.deviations.length;
+    this.finish(mean, Phaser.Math.Clamp(1 - mean / 7, 0, 1));
+  }
+
+  pointerDown(_x: number, y: number): void { if (y >= 225 && y <= 520) this.stopRound(); }
+  keyDown(event: KeyboardEvent): void { if (event.code === 'Space' || event.key === 'Enter') { event.preventDefault(); this.stopRound(); } }
+}
+
+class MarmotClockGame extends MiniGame {
+  private round = 1;
+  private roundMs = 0;
+  private readonly targetMs = 3000;
+  private deviations: number[] = [];
+
+  create(): void {
+    this.chrome('Toca cuando la barra llegue al final. Repite cinco veces.');
+    this.promptText.setY(198);
+    this.drawClock();
+  }
+
+  update(delta: number): void {
+    if (this.ended) return;
+    this.elapsedMs += delta;
+    this.roundMs += delta;
+    this.timerText.setText(this.timeLabel(Math.max(0, this.game.durationSec * 1000 - this.elapsedMs)));
+    if (this.roundMs >= this.targetMs + 1400) this.stopRound(true);
+    this.drawClock();
+    if (this.elapsedMs >= this.game.durationSec * 1000) this.complete();
+  }
+
+  private drawClock(): void {
+    this.beginGlyphFrame();
+    const g = this.graphics;
+    g.clear();
+    g.fillStyle(0xf0ede4).fillRoundedRect(77, 304, 326, 92, 20);
+    const remaining = Phaser.Math.Clamp(1 - this.roundMs / this.targetMs, 0, 1);
+    g.fillStyle(0xe3ded1).fillRoundedRect(100, 339, 280, 23, 12);
+    g.fillStyle(remaining > 0.2 ? 0x73a781 : 0xe56c4c).fillRoundedRect(100, 339, 280 * remaining, 23, 12);
+    this.promptText.setText(`Ronda ${this.round} de 5 · toca justo al vaciarse`);
+    this.scoreLabel(this.deviations.length ? this.deviations.reduce((a, b) => a + b, 0) / this.deviations.length : 0, 's de desviación');
+    this.glyphText(remaining > 0 ? 'ESPERA…' : '¡AHORA!', 240, 425, 25, '#263d34', 'DM Sans, sans-serif');
+  }
+
+  private stopRound(timedOut = false): void {
+    if (this.ended || this.round > 5) return;
+    const deviation = timedOut ? 1.4 : Math.abs(this.roundMs - this.targetMs) / 1000;
+    this.deviations.push(deviation);
+    this.feedbackText.setText(timedOut ? 'Se acabó el tiempo: toca antes.' : `Desviación: ${deviation.toFixed(2)} s`);
+    this.round += 1;
+    this.roundMs = 0;
+    if (this.deviations.length >= 5) this.complete();
+  }
+
+  private complete(): void {
+    if (!this.deviations.length) this.deviations.push(Math.abs(this.roundMs - this.targetMs) / 1000);
+    const mean = this.deviations.reduce((a, b) => a + b, 0) / this.deviations.length;
+    this.finish(mean, Phaser.Math.Clamp(1 - mean / this.targetMs, 0, 1));
+  }
+
+  pointerDown(_x: number, y: number): void { if (y >= 225 && y <= 520) this.stopRound(); }
+  keyDown(event: KeyboardEvent): void { if (event.code === 'Space' || event.key === 'Enter') { event.preventDefault(); this.stopRound(); } }
+}
+
+class CuttlefishReflexGame extends MiniGame {
+  private phase: 'wait' | 'go' = 'wait';
+  private waitMs = 0;
+  private goMs = 0;
+  private hits = 0;
+  private misses = 0;
+  private points = 0;
+
+  create(): void {
+    this.chrome('Espera al cambio de color y toca enseguida. Tocar antes resta puntos.');
+    this.waitMs = Phaser.Math.Between(1300, 2800);
+    this.drawSignal();
+  }
+
+  update(delta: number): void {
+    if (this.ended) return;
+    this.elapsedMs += delta;
+    this.timerText.setText(this.timeLabel(Math.max(0, this.game.durationSec * 1000 - this.elapsedMs)));
+    if (this.phase === 'wait') {
+      this.waitMs -= delta;
+      if (this.waitMs <= 0) { this.phase = 'go'; this.goMs = 0; }
+    } else {
+      this.goMs += delta;
+      if (this.goMs >= 1700) { this.misses += 1; this.phase = 'wait'; this.waitMs = Phaser.Math.Between(1000, 2400); }
+    }
+    this.drawSignal();
+    if (this.elapsedMs >= this.game.durationSec * 1000) this.complete();
+  }
+
+  private drawSignal(): void {
+    this.beginGlyphFrame();
+    const g = this.graphics;
+    g.clear();
+    g.fillStyle(this.phase === 'go' ? 0x73aa81 : 0x343f3b).fillRoundedRect(70, 246, 340, 247, 24);
+    this.glyphText(this.phase === 'go' ? '¡TOCA!' : 'ESPERA', 240, 347, 38, '#fffdf6');
+    this.glyphText(`Aciertos ${this.hits} · Fallos ${this.misses}`, 240, 432, 17, '#fffdf6', 'DM Mono, monospace');
+    this.scoreLabel(this.points, 'puntos');
+    this.promptText.setText(this.phase === 'go' ? '¡Cambio de color! Toca ya.' : 'No toques hasta que cambie el fondo.');
+  }
+
+  private tap(): void {
+    if (this.phase === 'wait') {
+      this.misses += 1;
+      this.points = Math.max(0, this.points - 1);
+      this.feedbackText.setText('Demasiado pronto: −1 punto.');
+      this.waitMs = Phaser.Math.Between(950, 2100);
+    } else {
+      this.hits += 1;
+      const bonus = this.goMs < 360 ? 2 : this.goMs < 750 ? 1 : 0;
+      this.points += 1 + bonus;
+      this.feedbackText.setText(bonus ? `¡Reflejos! +${1 + bonus} puntos.` : '+1 punto');
+      this.phase = 'wait';
+      this.waitMs = Phaser.Math.Between(1050, 2450);
+    }
+  }
+
+  private complete(): void { this.finish(this.points, this.hits + this.misses ? this.hits / (this.hits + this.misses) : 0); }
+  pointerDown(_x: number, y: number): void { if (y >= 225 && y <= 520) this.tap(); }
+  keyDown(event: KeyboardEvent): void { if (event.code === 'Space' || event.key === 'Enter') { event.preventDefault(); this.tap(); } }
+}
+
+interface MailCard { x: number; needsSeal: boolean; handled: boolean; label: string; }
+
+class PigeonMailGame extends MiniGame {
+  private card: MailCard = { x: 78, needsSeal: true, handled: false, label: 'URGENTE' };
+  private points = 0;
+  private correct = 0;
+  private decisions = 0;
+  private cardNumber = 0;
+
+  create(): void {
+    this.chrome('Sella las cartas bajo el matasellos. Deja pasar las que no necesitan sello.');
+    this.drawBelt();
+  }
+
+  update(delta: number): void {
+    if (this.ended) return;
+    this.elapsedMs += delta;
+    this.timerText.setText(this.timeLabel(Math.max(0, this.game.durationSec * 1000 - this.elapsedMs)));
+    this.card.x += 135 * delta / 1000;
+    if (!this.card.handled && this.card.x > 286) this.resolveCard(false);
+    if (this.card.x > 426) this.nextCard();
+    this.drawBelt();
+    if (this.elapsedMs >= this.game.durationSec * 1000) this.finish(this.points, this.decisions ? this.correct / this.decisions : 0);
+  }
+
+  private drawBelt(): void {
+    this.beginGlyphFrame();
+    const g = this.graphics;
+    g.clear();
+    g.fillStyle(0xd8e1d5).fillRoundedRect(66, 367, 348, 38, 18);
+    for (let x = 86; x < 414; x += 30) g.fillStyle(0x9aa99a).fillCircle(x, 386, 5);
+    g.fillStyle(0xf4d475, 0.28).fillRoundedRect(210, 285, 60, 202, 13);
+    g.lineStyle(3, 0xe27a58).lineBetween(240, 282, 240, 485);
+    g.fillStyle(0x427b59).fillRoundedRect(208, 282, 64, 22, 6);
+    g.fillStyle(0xfffdf6).lineStyle(2, 0xded9ca).fillRoundedRect(this.card.x - 53, 333, 106, 75, 10).strokeRoundedRect(this.card.x - 53, 333, 106, 75, 10);
+    this.glyphText(this.card.label, this.card.x, 349, 13, '#314c3d', 'DM Mono, monospace');
+    this.glyphText(this.card.needsSeal ? 'SELLAR' : 'SIN SELLO', this.card.x, 373, 11, this.card.needsSeal ? '#d36446' : '#718176', 'DM Mono, monospace');
+    this.promptText.setText('Toca cuando la carta esté centrada en el matasellos.');
+    this.scoreLabel(this.points, 'puntos');
+  }
+
+  private resolveCard(sealed: boolean): void {
+    if (this.card.handled) return;
+    if (sealed && this.card.needsSeal && Math.abs(this.card.x - 240) >= 45) {
+      this.feedbackText.setText(this.card.x < 195 ? 'Espera a que la carta llegue al matasellos.' : 'La carta ya pasó el matasellos.');
+      return;
+    }
+    this.card.handled = true;
+    this.decisions += 1;
+    const correct = sealed === this.card.needsSeal;
+    if (correct) {
+      this.correct += 1;
+      this.points += sealed ? (Math.abs(this.card.x - 240) < 18 ? 3 : 2) : 1;
+      this.feedbackText.setText(sealed ? (Math.abs(this.card.x - 240) < 18 ? '¡Perfecto! +3' : 'Carta sellada +2') : 'Bien visto: no necesitaba sello.');
+    } else {
+      this.points = Math.max(0, this.points - 1);
+      this.feedbackText.setText(sealed ? 'Esta carta no debía sellarse. −1' : 'La carta necesitaba sello. −1');
+    }
+  }
+
+  private nextCard(): void {
+    this.cardNumber += 1;
+    const needsSeal = this.cardNumber % 4 !== 0;
+    const labels = needsSeal ? ['URGENTE', 'CERTIFICADA', 'AÉREA'] : ['PUBLICIDAD', 'YA FRANQUEADA'];
+    this.card = { x: 78, needsSeal, handled: false, label: labels[this.cardNumber % labels.length] };
+  }
+
+  pointerDown(_x: number, y: number): void { if (y >= 270 && y <= 490) this.resolveCard(true); }
+  keyDown(event: KeyboardEvent): void { if (event.code === 'Space' || event.key === 'Enter') { event.preventDefault(); this.resolveCard(true); } }
+}
+
+class CricketRhythmGame extends MiniGame {
+  private phase: 'follow' | 'repeat' = 'follow';
+  private readonly guideBeatMs = 720;
+  private round = 1;
+  private taps = 0;
+  private lastTap?: number;
+  private guideIntervals: number[] = [];
+  private repeatErrors: number[] = [];
+  private roundScores: number[] = [];
+
+  create(): void {
+    this.chrome('Sigue cinco pulsos de luz. Después repite el mismo ritmo cuando se apague.');
+    this.drawPulse();
+  }
+
+  update(delta: number): void {
+    if (this.ended) return;
+    this.elapsedMs += delta;
+    this.timerText.setText(this.timeLabel(Math.max(0, this.game.durationSec * 1000 - this.elapsedMs)));
+    this.drawPulse();
+    if (this.elapsedMs >= this.game.durationSec * 1000) this.complete();
+  }
+
+  private drawPulse(): void {
+    this.beginGlyphFrame();
+    const g = this.graphics;
+    g.clear();
+    const visiblePulse = this.phase === 'follow' && (this.elapsedMs % this.guideBeatMs) < 230;
+    g.fillStyle(visiblePulse ? 0xf0c95f : 0xe8e4d8).lineStyle(3, 0xded9ca).fillCircle(240, 356, 70).strokeCircle(240, 356, 70);
+    this.glyphText(this.phase === 'follow' ? (visiblePulse ? '●' : '◌') : '♪', 240, 329, 42, '#314c3d');
+    this.glyphText(`Toque ${this.taps + 1} de 5`, 240, 452, 18, '#314c3d', 'DM Mono, monospace');
+    this.promptText.setText(this.phase === 'follow' ? `Ronda ${this.round} · toca con la luz` : `Ronda ${this.round} · repite el ritmo sin luz`);
+    const mean = this.roundScores.length ? this.roundScores.reduce((a, b) => a + b, 0) / this.roundScores.length : 0;
+    this.scoreLabel(Math.round(mean), '%');
+  }
+
+  private tap(): void {
+    if (this.ended || this.elapsedMs < 500) return;
+    if (this.lastTap !== undefined) {
+      const interval = this.elapsedMs - this.lastTap;
+      if (this.phase === 'follow') this.guideIntervals.push(interval);
+      else {
+        const reference = this.guideIntervals.length ? this.guideIntervals.reduce((a, b) => a + b, 0) / this.guideIntervals.length : this.guideBeatMs;
+        this.repeatErrors.push(Math.abs(interval - reference) / reference);
+      }
+    }
+    this.lastTap = this.elapsedMs;
+    this.taps += 1;
+    this.feedbackText.setText(this.phase === 'follow' ? 'Pulso anotado.' : 'Ritmo anotado.');
+    if (this.taps >= 5 && this.phase === 'follow') {
+      this.phase = 'repeat'; this.taps = 0; this.lastTap = undefined;
+      this.feedbackText.setText('Se apagó la luz. Repite el pulso.');
+    } else if (this.taps >= 5 && this.phase === 'repeat') {
+      const accuracy = this.repeatErrors.length ? this.repeatErrors.reduce((sum, error) => sum + Math.max(0, 1 - error), 0) / this.repeatErrors.length : 0;
+      this.roundScores.push(accuracy * 100);
+      if (this.round >= 3) { this.complete(); return; }
+      this.round += 1; this.phase = 'follow'; this.taps = 0; this.lastTap = undefined; this.guideIntervals = []; this.repeatErrors = [];
+    }
+    this.drawPulse();
+  }
+
+  private complete(): void {
+    const accuracy = this.roundScores.length ? this.roundScores.reduce((a, b) => a + b, 0) / this.roundScores.length / 100 : 0;
+    this.finish(Math.round(accuracy * 100), accuracy);
+  }
+
+  pointerDown(_x: number, y: number): void { if (y >= 225 && y <= 520) this.tap(); }
+  keyDown(event: KeyboardEvent): void { if (event.code === 'Space' || event.key === 'Enter') { event.preventDefault(); this.tap(); } }
 }
 
 interface Pipe { x: number; gapY: number; passed: boolean; }
