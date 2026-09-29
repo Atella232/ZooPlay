@@ -3,6 +3,7 @@ import type { GameManifest } from '../../data/games';
 import type { RunResult } from '../ArcadeScene';
 import { createMemoryTypingGame } from './MemoryTypingGames';
 import { createPrecisionGame } from './PrecisionGames';
+import { createArcadeMotionGame } from './ArcadeMotionGames';
 
 export interface DedicatedGame {
   create(): void;
@@ -30,6 +31,12 @@ function drawDirectionPad(graphics: Phaser.GameObjects.Graphics): void {
 export function createVerticalSliceGame(scene: Phaser.Scene, game: GameManifest, onFinish: Finish): DedicatedGame | undefined {
   const args: [Phaser.Scene, GameManifest, Finish] = [scene, game, onFinish];
   switch (game.id) {
+    case 'serpiente-glotona':
+    case 'panda-lenador':
+    case 'hormiga-zigzag':
+    case 'carrera-de-galgos':
+    case 'correcaminos':
+    case 'hamster-al-volante': return createArcadeMotionGame(...args);
     case 'medusa-a-partes-iguales':
     case 'rastro-del-caracol':
     case 'colibri-reflejos': return createPrecisionGame(...args);

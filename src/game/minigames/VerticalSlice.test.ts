@@ -38,6 +38,8 @@ const dedicatedIds = [
   'trile-del-mapache', 'chimpance-memorion', 'elefante-memorioso',
   'cotorra-telefonista', 'loro-dictado', 'piton-pi',
   'medusa-a-partes-iguales', 'rastro-del-caracol', 'colibri-reflejos',
+  'serpiente-glotona', 'panda-lenador', 'hormiga-zigzag',
+  'carrera-de-galgos', 'correcaminos', 'hamster-al-volante',
 ];
 
 describe('controladores específicos del catálogo', () => {
@@ -138,5 +140,18 @@ describe('controladores específicos del catálogo', () => {
       controller.pointerUp(x, 450);
     }
     expect(result).toMatchObject({ score: 100, accuracy: 1 });
+  });
+
+  it('la Carrera de Galgos registra dos vueltas al tocar para correr', () => {
+    let result: RunResult | undefined;
+    const controller = createController('carrera-de-galgos', (value) => { result = value; });
+    controller.create();
+    for (let frame = 0; frame < 600 && !result; frame += 1) {
+      controller.pointerDown(240, 400);
+      controller.update(50);
+    }
+    expect(result?.score).toBeGreaterThan(0);
+    expect(result?.score).toBeLessThan(20);
+    expect(result?.accuracy).toBe(1);
   });
 });
