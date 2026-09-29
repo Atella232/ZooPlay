@@ -240,12 +240,13 @@ export class CatalogGame implements DedicatedGame {
     else if (mechanic === 'stack') this.drawStack(g);
     else if (mechanic === 'sort' || mechanic === 'tiles') this.drawFalling(g);
     else if (mechanic === 'sokoban') this.drawSokoban(g);
+    else if (mechanic === 'maze') this.drawRunMaze(g);
     else if (mechanic === 'flap') this.drawFlap(g);
     else if (mechanic === 'swing') this.drawSwing(g);
     else if (mechanic === 'catch') this.drawCatch(g);
     else if (mechanic === 'bingo') this.drawBingo(g);
     else if (mechanic === 'draw') this.drawTrace(g);
-    if (mechanic === 'sequence' || mechanic === 'sokoban') this.drawDirectionControls(g);
+    if (mechanic === 'sequence' || mechanic === 'sokoban' || mechanic === 'maze') this.drawDirectionControls(g);
   }
 
   private drawTarget(g: Phaser.GameObjects.Graphics): void {
@@ -416,6 +417,23 @@ export class CatalogGame implements DedicatedGame {
     this.prompt.setText('Empuja todas las cajas hasta las metas con las flechas.');
   }
 
+  private drawRunMaze(g: Phaser.GameObjects.Graphics): void {
+    const originX = 96; const originY = 254; const cell = 36;
+    for (let row = 0; row < this.maze.length; row += 1) {
+      for (let col = 0; col < this.maze[row].length; col += 1) {
+        const tile = this.maze[row][col]; const x = originX + col * cell; const y = originY + row * cell;
+        g.fillStyle(tile === '#' ? 0x788a7c : 0xf1eddf).fillRoundedRect(x + 1, y + 1, cell - 2, cell - 2, 5);
+        if (tile === 'G') g.fillStyle(0xe8bd59).fillCircle(x + 18, y + 18, 10);
+        if (tile === 'B') {
+          g.fillStyle(0x293c33).fillCircle(x + 18, y + 18, 12);
+          g.fillStyle(0x15241e).fillCircle(x + 18, y + 18, 7);
+        }
+        if (this.mazePlayer.x === col && this.mazePlayer.y === row) g.fillStyle(0xdf8855).fillCircle(x + 18, y + 18, 12);
+      }
+    }
+    this.prompt.setText(`Llega a las metas y evita los agujeros · ♥ ${this.lives}`);
+  }
+
   private drawFlap(g: Phaser.GameObjects.Graphics): void {
     g.fillStyle(0xdceaf0).fillRoundedRect(57, 237, 366, 272, 18);
     for (const pipe of this.objects) {
@@ -522,6 +540,7 @@ export class CatalogGame implements DedicatedGame {
     else if (mechanic === 'stack') this.dropBlock();
     else if (mechanic === 'sort' || mechanic === 'tiles') this.chooseLane(x);
     else if (mechanic === 'sokoban') this.moveBox(this.directionAt(x, y));
+    else if (mechanic === 'maze') this.moveMaze(this.directionAt(x, y));
     else if (mechanic === 'flap') { this.started = true; this.ball.vy = -340; }
     else if (mechanic === 'swing') this.charge = true;
     else if (mechanic === 'catch') this.playerX = Phaser.Math.Clamp(x, 100, 380);
@@ -578,6 +597,7 @@ export class CatalogGame implements DedicatedGame {
       else if (mechanic === 'balance') this.playerX = Phaser.Math.Clamp(this.playerX + (direction === 2 ? 23 : direction === 0 ? -23 : 0), 70, 410);
       else if (mechanic === 'sequence') this.chooseSequence(direction);
       else if (mechanic === 'sokoban') this.moveBox(direction);
+      else if (mechanic === 'maze') this.moveMaze(direction);
       else if (mechanic === 'sort' || mechanic === 'tiles') this.chooseLane(direction);
       else if (mechanic === 'catch') this.playerX = Phaser.Math.Clamp(this.playerX + (direction === 2 ? 30 : direction === 0 ? -30 : 0), 100, 380);
     } else if (key === ' ' || key === 'Enter') {
@@ -710,6 +730,28 @@ export class CatalogGame implements DedicatedGame {
     }
     this.mazePlayer = { x, y };
     if (this.boxes.every((box) => this.goals.some((goal) => goal.x === box.x && goal.y === box.y))) { this.score = this.boxes.length; this.finish(); }
+  }
+
+  private moveMaze(direction: number): void {
+    const dx = direction === 0 ? -1 : direction === 2 ? 1 : 0;
+    const dy = direction === 1 ? -1 : direction === 3 ? 1 : 0;
+    const x = this.mazePlayer.x + dx; const y = this.mazePlayer.y + dy;
+    if (!this.maze[y] || x < 0 || x >= this.maze[y].length || this.maze[y][x] === '#') return;
+    const tile = this.maze[y][x];
+    if (tile === 'B') {
+      this.lives -= 1;
+      this.mazePlayer = { x: 1, y: 1 };
+      this.feedback.setText(`¡Agujero! Vuelve al inicio · ♥ ${this.lives}`);
+      if (!this.lives) this.finish();
+    } else {
+      this.mazePlayer = { x, y };
+      if (tile === 'G') {
+        this.maze[y] = `${this.maze[y].slice(0, x)}.${this.maze[y].slice(x + 1)}`;
+        this.score += 1; this.hits += 1;
+        this.feedback.setText('¡Meta encontrada!');
+        if (!this.maze.some((row) => row.includes('G'))) this.finish();
+      }
+    }
   }
 
   private chooseBingo(x: number, y: number): void {
