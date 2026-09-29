@@ -43,6 +43,14 @@ export function createVerticalSliceGame(scene: Phaser.Scene, game: GameManifest,
     case 'castor-lanzador': return new RotatingPinGame(...args);
     case 'lobo-lunar': return new WolfLauncherGame(...args);
     case 'nutria-lanzadora': return new OtterLauncherGame(...args);
+    case 'rinoceronte-rompemuros': return new RhinoBreakoutGame(...args);
+    case 'topo-golfista':
+    case 'topo-golfista-2':
+    case 'suricatas-del-minigolf': return new MiniGolfGame(...args);
+    case 'ardilla-contadora': return new SquirrelNumberGridGame(...args);
+    case 'buho-calculador': return new OwlMathGame(...args);
+    case 'zorro-de-los-dados': return new FoxDiceGame(...args);
+    case 'cuervo-contacajas': return new CrowCountGame(...args);
     default: return undefined;
   }
 }
@@ -108,6 +116,8 @@ abstract class MiniGame implements DedicatedGame {
     this.feedbackText.setText('¡Partida terminada!');
     this.onFinish({ score: Math.max(0, score), elapsedMs: Math.max(1, Math.round(this.elapsedMs)), accuracy: Phaser.Math.Clamp(accuracy, 0, 1) });
   }
+
+  protected finishTime(accuracy: number): void { this.finish(Math.max(0.01, this.elapsedMs / 1000), accuracy); }
 
   protected timeLabel(ms: number): string {
     const seconds = Math.ceil(ms / 1000);
@@ -733,6 +743,583 @@ class OtterLauncherGame extends MiniGame {
     else if (this.phase === 'aim' && event.key === 'ArrowUp') { event.preventDefault(); this.power = Phaser.Math.Clamp(this.power + 1, 18, 34); this.drawRange(); }
     else if (this.phase === 'aim' && event.key === 'ArrowDown') { event.preventDefault(); this.power = Phaser.Math.Clamp(this.power - 1, 18, 34); this.drawRange(); }
     else if (event.code === 'Space' || event.key === 'Enter') { event.preventDefault(); this.launch(); }
+  }
+}
+
+interface RhinoBrick { x: number; y: number; hp: number; }
+interface RhinoBall { x: number; y: number; vx: number; vy: number; }
+
+class RhinoBreakoutGame extends MiniGame {
+  private bricks: RhinoBrick[] = [];
+  private balls: RhinoBall[] = [];
+  private points = 0;
+  private hits = 0;
+  private shots = 0;
+  private rowMs = 3300;
+  private shotCooldown = 0;
+  private aimX = 240;
+
+  create(): void {
+    this.chrome('Apunta y dispara bolas a los ladrillos. El número muestra cuántos golpes faltan antes de que bajen.');
+    this.bricks = [];
+    [279, 324, 369].forEach((y) => this.addRow(y));
+    this.drawWall();
+  }
+
+  update(delta: number): void {
+    if (this.ended) return;
+    const expired = this.tick(delta);
+    this.shotCooldown = Math.max(0, this.shotCooldown - delta);
+    this.rowMs -= delta;
+    while (this.rowMs <= 0 && !this.ended) {
+      this.bricks.forEach((brick) => { brick.y += 43; });
+      if (this.bricks.some((brick) => brick.y >= 474)) { this.finish(this.points, this.shots ? this.hits / this.shots : 0); return; }
+      this.addRow(278);
+      this.rowMs += Math.max(1150, 3300 - this.points * 11);
+    }
+    const dt = delta / 1000;
+    for (let ballIndex = this.balls.length - 1; ballIndex >= 0; ballIndex -= 1) {
+      const ball = this.balls[ballIndex];
+      ball.x += ball.vx * dt;
+      ball.y += ball.vy * dt;
+      if (ball.x < 76 || ball.x > 404) { ball.x = Phaser.Math.Clamp(ball.x, 76, 404); ball.vx *= -1; }
+      if (ball.y < 258) { ball.y = 258; ball.vy = Math.abs(ball.vy); }
+      const brick = this.bricks.find((item) => Math.abs(ball.x - item.x) < 36 && Math.abs(ball.y - item.y) < 23);
+      if (brick) {
+        brick.hp -= 1;
+        this.hits += 1;
+        this.points += 1;
+        ball.vy *= -1;
+        if (brick.hp <= 0) {
+          this.bricks.splice(this.bricks.indexOf(brick), 1);
+          this.points += 2;
+          this.feedbackText.setText('¡Ladrillo roto! +3 puntos.');
+        } else this.feedbackText.setText(`¡Impacto! Le quedan ${brick.hp} golpes.`);
+      }
+      if (ball.y > 510) this.balls.splice(ballIndex, 1);
+    }
+    this.drawWall();
+    if (expired) this.finish(this.points, this.shots ? this.hits / this.shots : 0);
+  }
+
+  private addRow(y: number): void {
+    for (let column = 0; column < 5; column += 1) {
+      if (Phaser.Math.Between(0, 9) < 2) continue;
+      this.bricks.push({ x: 105 + column * 67, y, hp: Phaser.Math.Between(1, 3) });
+    }
+  }
+
+  private drawWall(): void {
+    this.beginGlyphFrame();
+    const g = this.graphics;
+    g.clear();
+    g.fillStyle(0x315442).fillRoundedRect(59, 234, 362, 284, 17);
+    g.lineStyle(2, 0x88a98b, 0.55).lineBetween(72, 478, 408, 478);
+    for (const brick of this.bricks) {
+      const tint = brick.hp === 1 ? 0xe5b856 : brick.hp === 2 ? 0xe98358 : 0xc16b55;
+      g.fillStyle(tint).lineStyle(2, 0xf4dfaf).fillRoundedRect(brick.x - 29, brick.y - 14, 58, 28, 6).strokeRoundedRect(brick.x - 29, brick.y - 14, 58, 28, 6);
+      this.glyphText(String(brick.hp), brick.x, brick.y - 10, 17, '#fffaf0', 'DM Mono, monospace');
+    }
+    for (const ball of this.balls) g.fillStyle(0xf4d26a).lineStyle(2, 0xfff8db).fillCircle(ball.x, ball.y, 8).strokeCircle(ball.x, ball.y, 8);
+    g.lineStyle(3, 0xe77755).lineBetween(240, 492, this.aimX, 450);
+    g.fillStyle(0xe77755).fillRoundedRect(210, 486, 60, 11, 6);
+    this.promptText.setText(`Apunta tocando una dirección · ${this.bricks.length} ladrillos en pantalla`);
+    this.scoreLabel(this.points, 'puntos');
+  }
+
+  private fire(x: number): void {
+    if (this.ended || this.shotCooldown > 0) return;
+    this.aimX = Phaser.Math.Clamp(x, 78, 402);
+    const vx = Phaser.Math.Clamp((this.aimX - 240) * 0.75, -165, 165);
+    this.balls.push({ x: 240, y: 478, vx, vy: -420 });
+    this.shots += 1;
+    this.shotCooldown = 220;
+    this.feedbackText.setText('¡Disparo! Golpea los ladrillos antes de que lleguen abajo.');
+  }
+
+  pointerDown(x: number, y: number): void { if (y >= 230 && y <= 515) this.fire(x); }
+  keyDown(event: KeyboardEvent): void {
+    if (event.key === 'ArrowLeft') { event.preventDefault(); this.aimX = Phaser.Math.Clamp(this.aimX - 24, 78, 402); this.drawWall(); }
+    else if (event.key === 'ArrowRight') { event.preventDefault(); this.aimX = Phaser.Math.Clamp(this.aimX + 24, 78, 402); this.drawWall(); }
+    else if (event.code === 'Space' || event.key === 'Enter') { event.preventDefault(); this.fire(this.aimX); }
+  }
+}
+
+interface GolfObstacle { x: number; y: number; width: number; height: number; }
+interface GolfHoleLayout { startX: number; startY: number; cupX: number; cupY: number; obstacles: GolfObstacle[]; }
+
+const GOLF_LAYOUTS: GolfHoleLayout[] = [
+  { startX: 100, startY: 454, cupX: 355, cupY: 290, obstacles: [{ x: 208, y: 390, width: 92, height: 19 }, { x: 280, y: 329, width: 20, height: 68 }] },
+  { startX: 105, startY: 287, cupX: 365, cupY: 450, obstacles: [{ x: 197, y: 365, width: 105, height: 18 }, { x: 295, y: 406, width: 18, height: 54 }] },
+  { startX: 105, startY: 450, cupX: 355, cupY: 303, obstacles: [{ x: 159, y: 360, width: 18, height: 83 }, { x: 252, y: 316, width: 104, height: 17 }] },
+  { startX: 365, startY: 454, cupX: 118, cupY: 289, obstacles: [{ x: 250, y: 390, width: 90, height: 18 }, { x: 185, y: 330, width: 17, height: 66 }] },
+];
+const PERSPECTIVE_GOLF_LAYOUT: GolfHoleLayout = {
+  startX: 165, startY: 456, cupX: 270, cupY: 286,
+  obstacles: [{ x: 188, y: 382, width: 74, height: 18 }, { x: 225, y: 330, width: 16, height: 56 }],
+};
+
+class MiniGolfGame extends MiniGame {
+  private layout = GOLF_LAYOUTS[0];
+  private ballX = 100;
+  private ballY = 454;
+  private velocityX = 0;
+  private velocityY = 0;
+  private drag?: { x: number; y: number; currentX: number; currentY: number };
+  private strokes = 0;
+  private holesCompleted = 0;
+  private shots = 0;
+
+  create(): void {
+    const copy = this.game.id === 'suricatas-del-minigolf'
+      ? 'Arrastra desde la bola para apuntar y elegir la fuerza. Completa tantos hoyos como puedas en 30 segundos.'
+      : 'Arrastra hacia atrás desde la bola para apuntar y elegir potencia. Puedes golpear otra vez aunque siga rodando.';
+    this.chrome(copy);
+    this.promptText.setY(192);
+    this.setHole(0);
+    this.drawCourse();
+  }
+
+  update(delta: number): void {
+    if (this.ended) return;
+    const expired = this.tick(delta);
+    if (Math.hypot(this.velocityX, this.velocityY) > 8) {
+      const steps = Math.max(1, Math.ceil(delta / 30));
+      const dt = delta / steps / 1000;
+      for (let index = 0; index < steps; index += 1) {
+        const oldX = this.ballX; const oldY = this.ballY;
+        this.ballX += this.velocityX * dt;
+        this.ballY += this.velocityY * dt;
+        if (this.ballX < 72 || this.ballX > 408) { this.ballX = Phaser.Math.Clamp(this.ballX, 72, 408); this.velocityX *= -0.76; }
+        if (this.ballY < 258 || this.ballY > 493) { this.ballY = Phaser.Math.Clamp(this.ballY, 258, 493); this.velocityY *= -0.76; }
+        for (const obstacle of this.layout.obstacles) {
+          const left = obstacle.x - obstacle.width / 2 - 8; const right = obstacle.x + obstacle.width / 2 + 8;
+          const top = obstacle.y - obstacle.height / 2 - 8; const bottom = obstacle.y + obstacle.height / 2 + 8;
+          if (this.ballX > left && this.ballX < right && this.ballY > top && this.ballY < bottom) {
+            if (oldX <= left || oldX >= right) { this.ballX = oldX; this.velocityX *= -0.72; }
+            else { this.ballY = oldY; this.velocityY *= -0.72; }
+          }
+        }
+        this.velocityX *= Math.pow(0.986, dt * 60);
+        this.velocityY *= Math.pow(0.986, dt * 60);
+        if (Math.hypot(this.ballX - this.layout.cupX, this.ballY - this.layout.cupY) < 18 && Math.hypot(this.velocityX, this.velocityY) < 175) {
+          this.sinkCup();
+          break;
+        }
+      }
+    }
+    this.drawCourse();
+    if (expired) {
+      if (this.game.id === 'suricatas-del-minigolf') this.finish(this.holesCompleted, this.shots ? this.holesCompleted / this.shots : 0);
+      else this.finishTime(this.shots ? this.holesCompleted / this.shots : 0);
+    }
+  }
+
+  private setHole(index: number): void {
+    this.layout = this.game.id === 'topo-golfista-2' ? PERSPECTIVE_GOLF_LAYOUT : GOLF_LAYOUTS[index % GOLF_LAYOUTS.length];
+    this.ballX = this.layout.startX; this.ballY = this.layout.startY;
+    this.velocityX = 0; this.velocityY = 0; this.strokes = 0;
+  }
+
+  private sinkCup(): void {
+    this.holesCompleted += 1;
+    this.feedbackText.setText('¡Hoyo conseguido!');
+    if (this.game.id !== 'suricatas-del-minigolf') {
+      this.finishTime(1 / Math.max(1, this.strokes));
+      return;
+    }
+    this.setHole(this.holesCompleted);
+  }
+
+  private screenX(x: number, y: number): number {
+    if (this.game.id !== 'topo-golfista-2') return x;
+    const perspective = 0.36 + Phaser.Math.Clamp((y - 258) / 235, 0, 1) * 0.64;
+    return 240 + (x - 240) * perspective;
+  }
+
+  private worldX(x: number, y: number): number {
+    if (this.game.id !== 'topo-golfista-2') return x;
+    const perspective = 0.36 + Phaser.Math.Clamp((y - 258) / 235, 0, 1) * 0.64;
+    return 240 + (x - 240) / perspective;
+  }
+
+  private drawCourse(): void {
+    this.beginGlyphFrame();
+    const g = this.graphics;
+    const perspective = this.game.id === 'topo-golfista-2';
+    g.clear();
+    g.fillStyle(0x7ba36d).fillRoundedRect(59, 236, 362, 276, 18);
+    if (perspective) {
+      g.fillStyle(0x689260, 0.82).fillTriangle(240, 247, 413, 506, 67, 506);
+      g.lineStyle(3, 0xf0e7ca, 0.9).lineBetween(240, 247, 67, 506).lineBetween(240, 247, 413, 506);
+      for (const y of [319, 377, 438]) {
+        const half = 68 + (y - 247) * 0.67;
+        g.lineStyle(2, 0xd7e4b5, 0.48).lineBetween(240 - half, y, 240 + half, y);
+      }
+    } else {
+      g.lineStyle(4, 0xf0e7ca).strokeRoundedRect(67, 244, 346, 260, 15);
+    }
+    for (const obstacle of this.layout.obstacles) {
+      const x = this.screenX(obstacle.x, obstacle.y);
+      const width = perspective ? obstacle.width * (0.36 + (obstacle.y - 258) / 235 * 0.64) : obstacle.width;
+      g.fillStyle(0x937c55).fillRoundedRect(x - width / 2, obstacle.y - obstacle.height / 2, width, obstacle.height, 8);
+      g.lineStyle(2, 0xd6c493).strokeRoundedRect(x - width / 2, obstacle.y - obstacle.height / 2, width, obstacle.height, 8);
+    }
+    const cupX = this.screenX(this.layout.cupX, this.layout.cupY);
+    const ballX = this.screenX(this.ballX, this.ballY);
+    g.fillStyle(0x243830).fillEllipse(cupX, this.layout.cupY, perspective ? 25 : 30, perspective ? 14 : 18);
+    g.lineStyle(2, 0xfff9e8).strokeCircle(cupX, this.layout.cupY, 18);
+    g.fillStyle(0xe4b956).fillCircle(ballX, this.ballY, 8);
+    g.fillStyle(0xfff8e7).fillCircle(ballX - 2, this.ballY - 3, 2);
+    if (this.drag) {
+      const endX = this.screenX(this.drag.currentX, this.drag.currentY);
+      const endY = this.drag.currentY;
+      g.lineStyle(4, 0xe76e4b).lineBetween(ballX, this.ballY, ballX + (ballX - endX) * 1.4, this.ballY + (this.ballY - endY) * 1.4);
+      this.glyphText('SUELTA', ballX, this.ballY - 32, 12, '#fff9e8', 'DM Mono, monospace');
+    }
+    this.promptText.setText(this.game.id === 'suricatas-del-minigolf'
+      ? `Hoyo ${this.holesCompleted + 1} · golpes ${this.strokes} · arrastra y suelta`
+      : `Hoyo 1 · golpes ${this.strokes} · arrastra desde la bola para tirar`);
+    if (this.game.id === 'suricatas-del-minigolf') this.scoreLabel(this.holesCompleted, 'hoyos');
+    else this.scoreLabel(this.elapsedMs / 1000, 's');
+  }
+
+  private stroke(dx: number, dy: number): void {
+    const strength = Math.hypot(dx, dy);
+    if (strength < 1) return;
+    const impulse = Phaser.Math.Clamp(strength * 3.1, 125, 520);
+    const magnitude = Math.max(1, strength);
+    this.velocityX += dx / magnitude * impulse;
+    this.velocityY += dy / magnitude * impulse;
+    this.strokes += 1; this.shots += 1;
+    this.feedbackText.setText(this.strokes === 1 ? '¡Primer golpe! Puedes volver a golpearla en movimiento.' : '¡Golpe añadido!');
+  }
+
+  pointerDown(x: number, y: number): void {
+    if (Math.hypot(x - this.screenX(this.ballX, this.ballY), y - this.ballY) < 58) {
+      this.drag = { x: this.ballX, y: this.ballY, currentX: this.ballX, currentY: y };
+    }
+  }
+  pointerMove(x: number, y: number, isDown: boolean): void { if (isDown && this.drag) { this.drag.currentX = this.worldX(x, y); this.drag.currentY = y; this.drawCourse(); } }
+  pointerUp(x: number, y: number): void {
+    if (!this.drag) return;
+    let dx = this.drag.x - this.worldX(x, y); let dy = this.drag.y - y;
+    if (Math.hypot(dx, dy) < 14) {
+      const towardCupX = this.layout.cupX - this.ballX; const towardCupY = this.layout.cupY - this.ballY;
+      const length = Math.max(1, Math.hypot(towardCupX, towardCupY));
+      dx = towardCupX / length * 62; dy = towardCupY / length * 62;
+    }
+    this.stroke(dx, dy);
+    this.drag = undefined;
+    this.drawCourse();
+  }
+  keyDown(event: KeyboardEvent): void {
+    const impulses: Record<string, [number, number]> = { ArrowLeft: [-55, 0], ArrowRight: [55, 0], ArrowUp: [0, -55], ArrowDown: [0, 55] };
+    if (impulses[event.key]) { event.preventDefault(); const [dx, dy] = impulses[event.key]; this.stroke(dx, dy); }
+    else if (event.code === 'Space' || event.key === 'Enter') { event.preventDefault(); const dx = this.layout.cupX - this.ballX; const dy = this.layout.cupY - this.ballY; const length = Math.max(1, Math.hypot(dx, dy)); this.stroke(dx / length * 60, dy / length * 60); }
+  }
+}
+
+class SquirrelNumberGridGame extends MiniGame {
+  private cells: number[] = [];
+  private nextNumber = 1;
+
+  create(): void {
+    this.chrome('Toca los números del 1 al 16 en orden en la cuadrícula mezclada.');
+    this.cells = Array.from({ length: 16 }, (_, index) => index + 1);
+    for (let index = this.cells.length - 1; index > 0; index -= 1) {
+      const swap = Phaser.Math.Between(0, index);
+      [this.cells[index], this.cells[swap]] = [this.cells[swap], this.cells[index]];
+    }
+    this.drawGrid();
+  }
+
+  update(delta: number): void {
+    if (this.ended) return;
+    const expired = this.tick(delta);
+    this.drawGrid();
+    if (expired) this.finishTime((this.nextNumber - 1) / 16);
+  }
+
+  private drawGrid(): void {
+    this.beginGlyphFrame();
+    const g = this.graphics;
+    g.clear();
+    for (let index = 0; index < 16; index += 1) {
+      const x = 122 + (index % 4) * 59;
+      const y = 290 + Math.floor(index / 4) * 52;
+      const value = this.cells[index];
+      const done = value < this.nextNumber;
+      g.fillStyle(done ? 0x82ad83 : 0xffffff).lineStyle(2, 0xe1dccf).fillRoundedRect(x - 23, y - 21, 46, 42, 10).strokeRoundedRect(x - 23, y - 21, 46, 42, 10);
+      this.glyphText(done ? '✓' : String(value), x, y - 9, 18, done ? '#fffdf6' : '#314c3d', 'DM Mono, monospace');
+    }
+    this.promptText.setText(this.nextNumber <= 16 ? `Toca el ${this.nextNumber} · quedan ${17 - this.nextNumber}` : '¡Cuadrícula completada!');
+    this.scoreLabel(this.elapsedMs / 1000, 's');
+  }
+
+  private selectCell(x: number, y: number): void {
+    const col = Math.floor((x - 99) / 59);
+    const row = Math.floor((y - 266) / 52);
+    if (col < 0 || col > 3 || row < 0 || row > 3) return;
+    const value = this.cells[row * 4 + col];
+    if (value === this.nextNumber) {
+      this.nextNumber += 1;
+      this.feedbackText.setText(this.nextNumber > 16 ? '¡Del 1 al 16 sin fallos!' : '¡Correcto! Sigue el orden.');
+      if (this.nextNumber > 16) this.finishTime(1);
+    } else this.feedbackText.setText(`Busca el ${this.nextNumber}.`);
+    this.drawGrid();
+  }
+
+  pointerDown(x: number, y: number): void { this.selectCell(x, y); }
+  keyDown(event: KeyboardEvent): void { if (/^\d+$/.test(event.key)) this.selectCell(122 + (this.cells.indexOf(Number(event.key)) % 4) * 59, 290 + Math.floor(this.cells.indexOf(Number(event.key)) / 4) * 52); }
+}
+
+class OwlMathGame extends MiniGame {
+  private round = 1;
+  private left = 3;
+  private right = 4;
+  private operator: '+' | '−' | '×' = '+';
+  private answer = 7;
+  private choices: number[] = [];
+  private correct = 0;
+
+  create(): void {
+    this.chrome('Resuelve cinco operaciones. Elige la respuesta correcta entre cuatro opciones.');
+    this.makeQuestion();
+    this.drawQuestion();
+  }
+
+  update(delta: number): void {
+    if (this.ended) return;
+    const expired = this.tick(delta);
+    this.drawQuestion();
+    if (expired) this.finishTime(this.correct / 5);
+  }
+
+  private makeQuestion(): void {
+    this.operator = (['+', '−', '×'] as const)[Phaser.Math.Between(0, 2)];
+    this.left = Phaser.Math.Between(2, 12);
+    this.right = Phaser.Math.Between(2, 12);
+    if (this.operator === '−' && this.right > this.left) [this.left, this.right] = [this.right, this.left];
+    this.answer = this.operator === '+' ? this.left + this.right : this.operator === '−' ? this.left - this.right : this.left * this.right;
+    const values = new Set([this.answer]);
+    for (let offset = 1; values.size < 4; offset += 1) {
+      values.add(this.answer + offset);
+      if (this.answer - offset >= 0) values.add(this.answer - offset);
+    }
+    this.choices = [...values].slice(0, 4);
+    for (let index = this.choices.length - 1; index > 0; index -= 1) {
+      const swap = Phaser.Math.Between(0, index);
+      [this.choices[index], this.choices[swap]] = [this.choices[swap], this.choices[index]];
+    }
+  }
+
+  private drawQuestion(): void {
+    this.beginGlyphFrame();
+    const g = this.graphics;
+    g.clear();
+    g.fillStyle(0xf0ede4).fillRoundedRect(104, 271, 272, 88, 20);
+    this.glyphText(`${this.left} ${this.operator} ${this.right} = ?`, 240, 304, 31, '#314c3d', 'DM Sans, sans-serif');
+    for (let index = 0; index < 4; index += 1) {
+      const x = 154 + (index % 2) * 172;
+      const y = 397 + Math.floor(index / 2) * 68;
+      g.fillStyle(0xffffff).lineStyle(2, 0xe1dccf).fillRoundedRect(x - 57, y - 25, 114, 50, 12).strokeRoundedRect(x - 57, y - 25, 114, 50, 12);
+      this.glyphText(String(this.choices[index]), x, y - 12, 24, '#314c3d', 'DM Mono, monospace');
+      this.glyphText(String(index + 1), x + 42, y + 12, 11, '#87958a', 'DM Mono, monospace');
+    }
+    this.promptText.setText(`Operación ${this.round} de 5 · elige 1, 2, 3 o 4`);
+    this.scoreLabel(this.elapsedMs / 1000, 's');
+  }
+
+  private choose(index: number): void {
+    if (index < 0 || index > 3 || this.ended) return;
+    if (this.choices[index] === this.answer) {
+      this.correct += 1;
+      this.feedbackText.setText('¡Correcto!');
+    } else this.feedbackText.setText(`No: ${this.left} ${this.operator} ${this.right} = ${this.answer}.`);
+    if (this.round >= 5) { this.finishTime(this.correct / 5); return; }
+    this.round += 1;
+    this.makeQuestion();
+    this.drawQuestion();
+  }
+
+  pointerDown(x: number, y: number): void {
+    if (x < 97 || x > 383 || y < 365 || y > 490) return;
+    const col = x > 240 ? 1 : 0; const row = y > 432 ? 1 : 0;
+    this.choose(row * 2 + col);
+  }
+  keyDown(event: KeyboardEvent): void { if (/^[1-4]$/.test(event.key)) this.choose(Number(event.key) - 1); }
+}
+
+class FoxDiceGame extends MiniGame {
+  private round = 1;
+  private dice: number[] = [];
+  private answer = '';
+  private expected = 0;
+  private correct = 0;
+  private readonly keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '⌫', '0', 'OK'];
+
+  create(): void {
+    this.chrome('Suma los cuatro dados y escribe el total con el teclado. Son tres rondas.');
+    this.makeDice();
+    this.drawDice();
+  }
+
+  update(delta: number): void {
+    if (this.ended) return;
+    const expired = this.tick(delta);
+    this.drawDice();
+    if (expired) this.finishTime(this.correct / 3);
+  }
+
+  private makeDice(): void {
+    this.dice = Array.from({ length: 4 }, () => Phaser.Math.Between(1, 6));
+    this.expected = this.dice.reduce((sum, die) => sum + die, 0);
+    this.answer = '';
+  }
+
+  private drawDice(): void {
+    this.beginGlyphFrame();
+    const g = this.graphics;
+    g.clear();
+    for (let index = 0; index < 4; index += 1) {
+      const x = 144 + index * 64;
+      g.fillStyle(0xffffff).lineStyle(2, 0xe2dccf).fillRoundedRect(x - 25, 279, 50, 50, 11).strokeRoundedRect(x - 25, 279, 50, 50, 11);
+      this.glyphText(String(this.dice[index]), x, 292, 26, '#314c3d', 'DM Mono, monospace');
+    }
+    g.fillStyle(0xf0ede4).fillRoundedRect(161, 342, 158, 45, 10);
+    this.glyphText(this.answer || '¿Suma?', 240, 354, 21, '#314c3d', 'DM Mono, monospace');
+    for (let index = 0; index < this.keys.length; index += 1) {
+      const col = index % 3; const row = Math.floor(index / 3);
+      const x = 159 + col * 81; const y = 414 + row * 28;
+      g.fillStyle(0xffffff).lineStyle(1, 0xe2dccf).fillRoundedRect(x - 31, y - 11, 62, 22, 6).strokeRoundedRect(x - 31, y - 11, 62, 22, 6);
+      this.glyphText(this.keys[index], x, y - 7, 12, '#314c3d', 'DM Mono, monospace');
+    }
+    this.promptText.setText(`Ronda ${this.round} de 3 · escribe la suma de los cuatro dados`);
+    this.scoreLabel(this.elapsedMs / 1000, 's');
+  }
+
+  private press(value: string): void {
+    if (value === '⌫') this.answer = this.answer.slice(0, -1);
+    else if (value === 'OK') this.submit();
+    else if (this.answer.length < 2) this.answer += value;
+    this.drawDice();
+  }
+
+  private submit(): void {
+    if (!this.answer) return;
+    if (Number(this.answer) === this.expected) {
+      this.correct += 1;
+      this.feedbackText.setText('¡Suma correcta!');
+      if (this.round >= 3) { this.finishTime(1); return; }
+      this.round += 1;
+      this.makeDice();
+    } else {
+      this.feedbackText.setText('Esa suma no coincide. Prueba otra vez.');
+      this.answer = '';
+    }
+    this.drawDice();
+  }
+
+  pointerDown(x: number, y: number): void {
+    if (x < 119 || x > 361 || y < 399 || y > 508) return;
+    const col = Phaser.Math.Clamp(Math.floor((x - 119) / 81), 0, 2);
+    const row = Phaser.Math.Clamp(Math.floor((y - 399) / 28), 0, 3);
+    this.press(this.keys[row * 3 + col]);
+  }
+  keyDown(event: KeyboardEvent): void {
+    if (/^\d$/.test(event.key)) this.press(event.key);
+    else if (event.key === 'Backspace') { event.preventDefault(); this.press('⌫'); }
+    else if (event.key === 'Enter') { event.preventDefault(); this.press('OK'); }
+  }
+}
+
+class CrowCountGame extends MiniGame {
+  private phase: 'show' | 'answer' = 'show';
+  private phaseMs = 0;
+  private displayMs = 1150;
+  private level = 1;
+  private targetCount = 0;
+  private answer = 0;
+  private lives = 3;
+  private correct = 0;
+  private mistakes = 0;
+
+  create(): void {
+    this.chrome('Cuenta las cajas que aparecen. Después usa − y + y pulsa OK. Tienes tres vidas.');
+    this.newRound();
+    this.drawBoxes();
+  }
+
+  update(delta: number): void {
+    if (this.ended) return;
+    const expired = this.tick(delta);
+    if (this.phase === 'show') {
+      this.phaseMs -= delta;
+      if (this.phaseMs <= 0) this.phase = 'answer';
+    }
+    this.drawBoxes();
+    if (expired) this.finish(this.level - 1, this.correct / Math.max(1, this.correct + this.mistakes));
+  }
+
+  private newRound(): void {
+    this.targetCount = Phaser.Math.Between(4, Math.min(18, 4 + this.level));
+    this.answer = 0;
+    this.displayMs = Math.max(520, 1250 - this.level * 36);
+    this.phaseMs = this.displayMs;
+    this.phase = 'show';
+  }
+
+  private drawBoxes(): void {
+    this.beginGlyphFrame();
+    const g = this.graphics;
+    g.clear();
+    if (this.phase === 'show') {
+      for (let index = 0; index < this.targetCount; index += 1) {
+        const col = index % 5; const row = Math.floor(index / 5);
+        const x = 112 + col * 56; const y = 296 + row * 35;
+        g.fillStyle(0xc59663).lineStyle(2, 0x815f42).fillRoundedRect(x - 19, y - 15, 38, 30, 5).strokeRoundedRect(x - 19, y - 15, 38, 30, 5);
+        g.lineStyle(1, 0xe2c69f).lineBetween(x - 17, y, x + 17, y);
+      }
+    }
+    this.glyphText(this.phase === 'show' ? '¡Mira las cajas!' : `¿Cuántas viste?  ${this.answer}`, 240, 434, 20, '#314c3d');
+    for (const [x, label] of [[145, '−'], [240, 'OK'], [335, '+']] as const) {
+      g.fillStyle(0xffffff).lineStyle(2, 0xe2dccf).fillRoundedRect(x - 34, 474, 68, 34, 8).strokeRoundedRect(x - 34, 474, 68, 34, 8);
+      this.glyphText(label, x, 482, 15, '#314c3d', 'DM Mono, monospace');
+    }
+    this.promptText.setText(this.phase === 'show' ? `Nivel ${this.level} · cuenta antes de que desaparezcan` : `Nivel ${this.level} · ♥ ${this.lives} · responde con − / +`);
+    this.scoreLabel(this.level - 1, 'niveles');
+  }
+
+  private submit(): void {
+    if (this.phase !== 'answer') return;
+    if (this.answer === this.targetCount) {
+      this.correct += 1;
+      this.level += 1;
+      this.feedbackText.setText(`¡Correcto! Nivel ${this.level}.`);
+      this.newRound();
+    } else {
+      this.mistakes += 1;
+      this.lives -= 1;
+      this.feedbackText.setText(`Eran ${this.targetCount} · quedan ${this.lives} vidas.`);
+      if (this.lives <= 0) { this.finish(this.level - 1, this.correct / Math.max(1, this.correct + this.mistakes)); return; }
+      this.phase = 'show'; this.phaseMs = Math.max(520, this.displayMs * 0.75); this.answer = 0;
+    }
+    this.drawBoxes();
+  }
+
+  pointerDown(x: number, y: number): void {
+    if (this.phase !== 'answer' || y < 456 || y > 515) return;
+    if (x < 194) this.answer = Math.max(0, this.answer - 1);
+    else if (x > 286) this.answer += 1;
+    else this.submit();
+    this.drawBoxes();
+  }
+  keyDown(event: KeyboardEvent): void {
+    if (this.phase !== 'answer') return;
+    if (event.key === '+' || event.key === 'ArrowUp') { event.preventDefault(); this.answer += 1; this.drawBoxes(); }
+    else if (event.key === '-' || event.key === 'ArrowDown') { event.preventDefault(); this.answer = Math.max(0, this.answer - 1); this.drawBoxes(); }
+    else if (event.key === 'Enter' || event.code === 'Space') { event.preventDefault(); this.submit(); }
   }
 }
 

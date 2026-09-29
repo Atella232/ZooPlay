@@ -40,6 +40,9 @@ export class ArcadeScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
-    this.gameController?.update(delta);
+    if (typeof document !== 'undefined' && document.hidden) return;
+    // Recovering a backgrounded tab can yield one very large delta. Keep it
+    // from consuming an entire timed run or teleporting a projectile at once.
+    this.gameController?.update(Math.min(delta, 50));
   }
 }
