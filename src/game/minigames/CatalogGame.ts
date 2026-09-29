@@ -54,6 +54,10 @@ export class CatalogGame implements DedicatedGame {
   private goals: { x: number; y: number }[] = [{ x: 3, y: 1 }, { x: 6, y: 3 }, { x: 4, y: 5 }];
   private lastTrail = 0;
   private traceError = 0;
+  private towerAngle = 0;
+  private towerDepth = 0;
+  private towerFloor = 0;
+  private towerHazard = 5;
 
   constructor(private scene: Phaser.Scene, private game: GameManifest, private onFinish: Finish) {
     this.seed = [...game.id].reduce((total, char) => (Math.imul(total, 31) + char.charCodeAt(0)) >>> 0, 917);
@@ -84,6 +88,7 @@ export class CatalogGame implements DedicatedGame {
     if (mechanic === 'bingo') this.cardNumbers = Array.from({ length: 16 }, (_, index) => index + 1).sort(() => this.random() - 0.5).slice(0, 4);
     if (mechanic === 'count') { this.roundMs = 0; this.targetChoice = this.randomInt(3, 6); }
     if (mechanic === 'aim' || mechanic === 'basket') this.placeTarget();
+    if (this.game.id === 'armadillo-en-picado') this.towerHazard = this.randomInt(0, 7);
   }
 
   update(delta: number): void {
@@ -105,7 +110,24 @@ export class CatalogGame implements DedicatedGame {
   private updateWorld(delta: number): void {
     const mechanic = this.game.mechanic;
     const dt = delta / 1000;
-    if (mechanic === 'dodge' || mechanic === 'race' || mechanic === 'swerve') {
+    if (this.game.id === 'armadillo-en-picado') {
+      this.towerDepth += delta * (this.charge ? 0.19 : 0.055);
+      const floor = Math.floor(this.towerDepth / 200);
+      if (floor > this.towerFloor) {
+        this.towerFloor = floor;
+        const distance = Math.abs(this.towerAngle - this.towerHazard);
+        const safe = Math.min(distance, 8 - distance) >= 2;
+        if (safe) {
+          this.score += 5; this.hits += 1;
+          this.feedback.setText('¡Has pasado por el hueco! Sigue descendiendo.');
+        } else {
+          this.lives -= 1; this.misses += 1;
+          this.feedback.setText(`¡Pincho! Cambia de sector · ♥ ${this.lives}`);
+          if (!this.lives) { this.finish(); return; }
+        }
+        this.towerHazard = this.randomInt(0, 7);
+      }
+    } else if (mechanic === 'dodge' || mechanic === 'race' || mechanic === 'swerve') {
       this.spawnMs -= delta;
       if (this.spawnMs <= 0) {
         const lane = this.randomInt(0, 3);
@@ -208,6 +230,7 @@ export class CatalogGame implements DedicatedGame {
     const mechanic = this.game.mechanic;
     if (mechanic === 'target' || mechanic === 'aim' || mechanic === 'basket') this.drawTarget(g);
     else if (mechanic === 'timing' || mechanic === 'rhythm') this.drawTiming(g);
+    else if (mechanic === 'swerve' && this.game.id === 'armadillo-en-picado') this.drawTower(g);
     else if (mechanic === 'dodge' || mechanic === 'race' || mechanic === 'swerve') this.drawRoad(g);
     else if (mechanic === 'balance') this.drawBalance(g);
     else if (mechanic === 'sequence') this.drawSequence(g);
@@ -260,6 +283,33 @@ export class CatalogGame implements DedicatedGame {
     g.fillStyle(0xe0b858).fillCircle(this.playerX, this.playerY, 17);
     g.fillStyle(0xf8f3e4).fillCircle(this.playerX - 4, this.playerY - 3, 3).fillCircle(this.playerX + 4, this.playerY - 3, 3);
     this.glyph(this.game.emoji, this.playerX, this.playerY - 31, 24, '#263d34', 'sans-serif');
+  }
+
+  private drawTower(g: Phaser.GameObjects.Graphics): void {
+    g.fillStyle(0xe2eadd).fillEllipse(240, 486, 324, 48);
+    g.fillStyle(0x718679).fillRoundedRect(213, 271, 54, 218, 18);
+    for (let ring = 0; ring < 5; ring += 1) {
+      const y = 288 + ring * 41;
+      const radius = 145 - ring * 6;
+      const active = ring === this.towerFloor % 5;
+      g.lineStyle(active ? 8 : 4, active ? 0x6fa47c : 0xa8b8a7, active ? 1 : 0.9).strokeEllipse(240, y, radius * 2, 42);
+      g.lineStyle(2, 0xd8e2d3, 0.8).lineBetween(240, y - 21, 240, y + 21);
+      const hazardAngle = this.towerHazard * Math.PI / 4;
+      const hazardX = 240 + Math.cos(hazardAngle) * radius;
+      const hazardY = y + Math.sin(hazardAngle) * 21;
+      if (active) g.fillStyle(0xe56c4c).fillTriangle(hazardX - 11, hazardY + 9, hazardX + 11, hazardY + 9, hazardX, hazardY - 14);
+    }
+    const ringY = 288 + (this.towerFloor % 5) * 41;
+    const ringRadius = 145 - (this.towerFloor % 5) * 6;
+    const progress = (this.towerDepth % 200) / 200;
+    const x = 240 + Math.cos(this.towerAngle * Math.PI / 4) * ringRadius;
+    const y = ringY + Math.sin(this.towerAngle * Math.PI / 4) * 21 + progress * 34;
+    g.fillStyle(0xe9bf58).fillCircle(x, y, 18);
+    g.lineStyle(2, 0xfff7db).strokeCircle(x, y, 18);
+    g.fillStyle(0x42594a).fillRoundedRect(95, 507, 290, 7, 4);
+    g.fillStyle(0xe5b850).fillRoundedRect(95, 507, 290 * progress, 7, 4);
+    this.glyph(this.game.emoji, x, y - 22, 28, '#263d34', 'sans-serif');
+    this.prompt.setText('Mantén pulsado para bajar; toca a un lado u otro para girar y esquivar los pinchos.');
   }
 
   private drawBalance(g: Phaser.GameObjects.Graphics): void {
@@ -454,7 +504,11 @@ export class CatalogGame implements DedicatedGame {
     if (this.ended) return;
     this.drag = { x, y };
     const mechanic = this.game.mechanic;
-    if (mechanic === 'target' || mechanic === 'aim' || mechanic === 'basket') this.hitTarget(x, y);
+    if (this.game.id === 'armadillo-en-picado') {
+      this.towerAngle = (this.towerAngle + (x < 240 ? 7 : 1)) % 8;
+      this.charge = true;
+    }
+    else if (mechanic === 'target' || mechanic === 'aim' || mechanic === 'basket') this.hitTarget(x, y);
     else if (mechanic === 'timing' || mechanic === 'rhythm') this.hitTiming();
     else if (mechanic === 'dodge' || mechanic === 'race' || mechanic === 'swerve') this.moveLane(x);
     else if (mechanic === 'balance') this.playerX = x;
@@ -491,7 +545,8 @@ export class CatalogGame implements DedicatedGame {
   }
 
   pointerUp(x: number, y: number): void {
-    if (this.game.mechanic === 'swing' && this.charge) {
+    if (this.game.id === 'armadillo-en-picado') this.charge = false;
+    else if (this.game.mechanic === 'swing' && this.charge) {
       this.charge = false;
       const precision = Phaser.Math.Clamp(1 - Math.abs(this.targetX - 240) / 150, 0, 1);
       this.record(precision > 0.65);
@@ -515,7 +570,11 @@ export class CatalogGame implements DedicatedGame {
       event.preventDefault();
       const direction = dirs[key];
       const mechanic = this.game.mechanic;
-      if (mechanic === 'dodge' || mechanic === 'race' || mechanic === 'swerve') this.playerX = 110 + Phaser.Math.Clamp(Math.round((this.playerX - 110) / 88) + (direction === 2 ? 1 : direction === 0 ? -1 : 0), 0, 3) * 88;
+      if (this.game.id === 'armadillo-en-picado') {
+        if (direction === 0 || direction === 2) this.towerAngle = (this.towerAngle + (direction === 0 ? 7 : 1)) % 8;
+        else this.towerDepth += 28;
+      }
+      else if (mechanic === 'dodge' || mechanic === 'race' || mechanic === 'swerve') this.playerX = 110 + Phaser.Math.Clamp(Math.round((this.playerX - 110) / 88) + (direction === 2 ? 1 : direction === 0 ? -1 : 0), 0, 3) * 88;
       else if (mechanic === 'balance') this.playerX = Phaser.Math.Clamp(this.playerX + (direction === 2 ? 23 : direction === 0 ? -23 : 0), 70, 410);
       else if (mechanic === 'sequence') this.chooseSequence(direction);
       else if (mechanic === 'sokoban') this.moveBox(direction);
@@ -523,7 +582,8 @@ export class CatalogGame implements DedicatedGame {
       else if (mechanic === 'catch') this.playerX = Phaser.Math.Clamp(this.playerX + (direction === 2 ? 30 : direction === 0 ? -30 : 0), 100, 380);
     } else if (key === ' ' || key === 'Enter') {
       event.preventDefault();
-      if (this.game.mechanic === 'flap') { this.started = true; this.ball.vy = -340; }
+      if (this.game.id === 'armadillo-en-picado') this.towerDepth += 45;
+      else if (this.game.mechanic === 'flap') { this.started = true; this.ball.vy = -340; }
       else if (this.game.mechanic === 'stack') this.dropBlock();
       else if (this.game.mechanic === 'timing' || this.game.mechanic === 'rhythm') this.hitTiming();
       else if (this.game.mechanic === 'swing') {
