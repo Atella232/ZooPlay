@@ -43,6 +43,7 @@ const dedicatedIds = [
   'jardin-de-luciernagas', 'ciguena-repartidora', 'gato-pianista',
   'vencejo-veloz', 'cangrejo-interruptor', 'pajaro-carpintero', 'golondrina-cazadora',
   'libelula-espacial', 'abejorro-propulsado', 'rana-saltarina', 'gecko-trepador', 'canguro-trampolin',
+  'pinguino-escalador', 'lemur-giratorio', 'guepardo-derrapante', 'liebre-en-la-autopista', 'mantis-cortadora', 'anguila-electrica',
 ];
 
 describe('controladores específicos del catálogo', () => {
@@ -199,5 +200,24 @@ describe('controladores específicos del catálogo', () => {
     controller.update(60_000);
     expect(result?.score).toBeGreaterThanOrEqual(9);
     expect(result?.accuracy).toBe(1);
+  });
+
+  it.each(['pinguino-escalador', 'lemur-giratorio', 'guepardo-derrapante', 'liebre-en-la-autopista', 'mantis-cortadora', 'anguila-electrica'])(
+    '%s termina una partida cronometrada', (id) => {
+      let result: RunResult | undefined;
+      const controller = createController(id, (value) => { result = value; });
+      controller.create();
+      controller.update(60_000);
+      expect(result).toMatchObject({ elapsedMs: 60_000 });
+    },
+  );
+
+  it('Pingüino Escalador premia el aterrizaje perfecto', () => {
+    let result: RunResult | undefined;
+    const controller = createController('pinguino-escalador', (value) => { result = value; });
+    controller.create();
+    controller.pointerDown(240, 400);
+    controller.update(60_000);
+    expect(result).toMatchObject({ score: 10, accuracy: 1 });
   });
 });

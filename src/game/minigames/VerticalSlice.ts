@@ -6,6 +6,7 @@ import { createPrecisionGame } from './PrecisionGames';
 import { createArcadeMotionGame } from './ArcadeMotionGames';
 import { createFastActionGame } from './FastActionGames';
 import { createArcadeSkillGame } from './ArcadeSkillGames';
+import { createMovementSpecialGame } from './MovementSpecialGames';
 
 export interface DedicatedGame {
   create(): void;
@@ -33,6 +34,12 @@ function drawDirectionPad(graphics: Phaser.GameObjects.Graphics): void {
 export function createVerticalSliceGame(scene: Phaser.Scene, game: GameManifest, onFinish: Finish): DedicatedGame | undefined {
   const args: [Phaser.Scene, GameManifest, Finish] = [scene, game, onFinish];
   switch (game.id) {
+    case 'pinguino-escalador':
+    case 'lemur-giratorio':
+    case 'guepardo-derrapante':
+    case 'liebre-en-la-autopista':
+    case 'mantis-cortadora':
+    case 'anguila-electrica': return createMovementSpecialGame(...args);
     case 'libelula-espacial':
     case 'abejorro-propulsado':
     case 'rana-saltarina':
