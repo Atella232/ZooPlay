@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import type { GameManifest } from '../../data/games';
 import type { RunResult } from '../ArcadeScene';
+import { createMemoryTypingGame } from './MemoryTypingGames';
 
 export interface DedicatedGame {
   create(): void;
@@ -28,6 +29,12 @@ function drawDirectionPad(graphics: Phaser.GameObjects.Graphics): void {
 export function createVerticalSliceGame(scene: Phaser.Scene, game: GameManifest, onFinish: Finish): DedicatedGame | undefined {
   const args: [Phaser.Scene, GameManifest, Finish] = [scene, game, onFinish];
   switch (game.id) {
+    case 'trile-del-mapache':
+    case 'chimpance-memorion':
+    case 'elefante-memorioso':
+    case 'cotorra-telefonista':
+    case 'loro-dictado':
+    case 'piton-pi': return createMemoryTypingGame(...args);
     case 'gorrion-aleteador': return new SparrowGame(...args);
     case 'erizo-cruzacalles': return new HedgehogGame(...args);
     case 'ojo-de-halcon': return new HawkGame(...args);

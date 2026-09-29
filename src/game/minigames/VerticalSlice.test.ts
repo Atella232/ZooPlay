@@ -35,6 +35,8 @@ const dedicatedIds = [
   'puas-de-puercoespin', 'castor-lanzador', 'lobo-lunar', 'nutria-lanzadora',
   'rinoceronte-rompemuros', 'topo-golfista', 'topo-golfista-2', 'suricatas-del-minigolf',
   'ardilla-contadora', 'buho-calculador', 'zorro-de-los-dados', 'cuervo-contacajas',
+  'trile-del-mapache', 'chimpance-memorion', 'elefante-memorioso',
+  'cotorra-telefonista', 'loro-dictado', 'piton-pi',
 ];
 
 describe('controladores específicos del catálogo', () => {
@@ -98,5 +100,30 @@ describe('controladores específicos del catálogo', () => {
     controller.pointerMove(45, 510, true);
     controller.pointerUp(45, 510);
     expect(() => controller.update(16)).not.toThrow();
+  });
+
+  it.each(['trile-del-mapache', 'chimpance-memorion', 'elefante-memorioso', 'cotorra-telefonista', 'loro-dictado', 'piton-pi'])(
+    '%s termina una partida al agotarse el tiempo', (id) => {
+      let result: RunResult | undefined;
+      const controller = createController(id, (value) => { result = value; });
+      controller.create();
+      controller.update(60_000);
+      expect(result).toMatchObject({ elapsedMs: 60_000 });
+      expect(result?.accuracy).toBeGreaterThanOrEqual(0);
+      expect(result?.accuracy).toBeLessThanOrEqual(1);
+    },
+  );
+
+  it('Pitón Pi acepta cifras en orden y descuenta vidas ante errores', () => {
+    let result: RunResult | undefined;
+    const controller = createController('piton-pi', (value) => { result = value; });
+    controller.create();
+    controller.keyDown({ key: '1', preventDefault() {} } as KeyboardEvent);
+    controller.keyDown({ key: '4', preventDefault() {} } as KeyboardEvent);
+    controller.keyDown({ key: '2', preventDefault() {} } as KeyboardEvent);
+    controller.keyDown({ key: '0', preventDefault() {} } as KeyboardEvent);
+    controller.keyDown({ key: '0', preventDefault() {} } as KeyboardEvent);
+    controller.keyDown({ key: '0', preventDefault() {} } as KeyboardEvent);
+    expect(result).toMatchObject({ score: 2, accuracy: 0.4 });
   });
 });
