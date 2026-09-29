@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import type { GameManifest } from '../../data/games';
 import type { RunResult } from '../ArcadeScene';
 import { createMemoryTypingGame } from './MemoryTypingGames';
+import { createPrecisionGame } from './PrecisionGames';
 
 export interface DedicatedGame {
   create(): void;
@@ -29,6 +30,9 @@ function drawDirectionPad(graphics: Phaser.GameObjects.Graphics): void {
 export function createVerticalSliceGame(scene: Phaser.Scene, game: GameManifest, onFinish: Finish): DedicatedGame | undefined {
   const args: [Phaser.Scene, GameManifest, Finish] = [scene, game, onFinish];
   switch (game.id) {
+    case 'medusa-a-partes-iguales':
+    case 'rastro-del-caracol':
+    case 'colibri-reflejos': return createPrecisionGame(...args);
     case 'trile-del-mapache':
     case 'chimpance-memorion':
     case 'elefante-memorioso':

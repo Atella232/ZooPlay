@@ -37,6 +37,7 @@ const dedicatedIds = [
   'ardilla-contadora', 'buho-calculador', 'zorro-de-los-dados', 'cuervo-contacajas',
   'trile-del-mapache', 'chimpance-memorion', 'elefante-memorioso',
   'cotorra-telefonista', 'loro-dictado', 'piton-pi',
+  'medusa-a-partes-iguales', 'rastro-del-caracol', 'colibri-reflejos',
 ];
 
 describe('controladores específicos del catálogo', () => {
@@ -102,7 +103,7 @@ describe('controladores específicos del catálogo', () => {
     expect(() => controller.update(16)).not.toThrow();
   });
 
-  it.each(['trile-del-mapache', 'chimpance-memorion', 'elefante-memorioso', 'cotorra-telefonista', 'loro-dictado', 'piton-pi'])(
+  it.each(['trile-del-mapache', 'chimpance-memorion', 'elefante-memorioso', 'cotorra-telefonista', 'loro-dictado', 'piton-pi', 'medusa-a-partes-iguales', 'rastro-del-caracol', 'colibri-reflejos'])(
     '%s termina una partida al agotarse el tiempo', (id) => {
       let result: RunResult | undefined;
       const controller = createController(id, (value) => { result = value; });
@@ -125,5 +126,17 @@ describe('controladores específicos del catálogo', () => {
     controller.keyDown({ key: '0', preventDefault() {} } as KeyboardEvent);
     controller.keyDown({ key: '0', preventDefault() {} } as KeyboardEvent);
     expect(result).toMatchObject({ score: 2, accuracy: 0.4 });
+  });
+
+  it('la Medusa mide seis cortes en mitad, tercios y cuartos', () => {
+    let result: RunResult | undefined;
+    const controller = createController('medusa-a-partes-iguales', (value) => { result = value; });
+    controller.create();
+    const cuts = [240, 195, 285, 172.5, 240, 307.5];
+    for (const x of cuts) {
+      controller.pointerDown(x, 330);
+      controller.pointerUp(x, 450);
+    }
+    expect(result).toMatchObject({ score: 100, accuracy: 1 });
   });
 });
