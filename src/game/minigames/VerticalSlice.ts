@@ -39,6 +39,10 @@ export function createVerticalSliceGame(scene: Phaser.Scene, game: GameManifest,
     case 'sepia-reflejos': return new CuttlefishReflexGame(...args);
     case 'paloma-mensajera': return new PigeonMailGame(...args);
     case 'grillo-ritmico': return new CricketRhythmGame(...args);
+    case 'puas-de-puercoespin':
+    case 'castor-lanzador': return new RotatingPinGame(...args);
+    case 'lobo-lunar': return new WolfLauncherGame(...args);
+    case 'nutria-lanzadora': return new OtterLauncherGame(...args);
     default: return undefined;
   }
 }
@@ -429,6 +433,307 @@ class CricketRhythmGame extends MiniGame {
 
   pointerDown(_x: number, y: number): void { if (y >= 225 && y <= 520) this.tap(); }
   keyDown(event: KeyboardEvent): void { if (event.code === 'Space' || event.key === 'Enter') { event.preventDefault(); this.tap(); } }
+}
+
+class RotatingPinGame extends MiniGame {
+  private rotor = 0;
+  private speed = 1.05;
+  private pegs: number[] = [];
+  private points = 0;
+  private readonly shotAngle = Math.PI / 2;
+
+  create(): void {
+    const isCastor = this.game.id === 'castor-lanzador';
+    this.chrome(isCastor
+      ? 'Lanza dientes al tronco que gira. No choques con los que ya están clavados.'
+      : 'Dispara la púa móvil por un hueco libre entre las púas clavadas.');
+    this.pegs = isCastor ? [-2.7, -1.85, -0.95, -0.12, 0.75] : [-2.8, -2.05, -1.26, -0.46, 0.34, 1.14];
+    this.drawRotor();
+  }
+
+  update(delta: number): void {
+    if (this.ended) return;
+    const expired = this.tick(delta);
+    this.rotor = (this.rotor + delta / 1000 * this.speed) % (Math.PI * 2);
+    this.speed = Math.min(2.7, 1.05 + this.points * 0.025);
+    this.drawRotor();
+    if (expired) this.finish(this.points, this.points ? 1 : 0);
+  }
+
+  private drawRotor(): void {
+    this.beginGlyphFrame();
+    const g = this.graphics;
+    const castor = this.game.id === 'castor-lanzador';
+    g.clear();
+    g.fillStyle(castor ? 0xc59a67 : 0xe5e5da).fillCircle(240, 367, 104);
+    g.lineStyle(10, castor ? 0x936541 : 0xb8c5b5).strokeCircle(240, 367, 104);
+    g.lineStyle(5, castor ? 0x76543b : 0x8ca18f).strokeCircle(240, 367, 77);
+    g.fillStyle(castor ? 0x9e7048 : 0x7d9582).fillRoundedRect(221, 277, 38, 181, 16);
+    for (let stripe = -1; stripe <= 1; stripe += 1) {
+      g.lineStyle(2, castor ? 0xd5b087 : 0xbac7b9, 0.9).lineBetween(226 + stripe * 10, 291, 226 + stripe * 10, 444);
+    }
+    for (const peg of this.pegs) {
+      const angle = peg + this.rotor;
+      const inner = 78; const outer = 120;
+      const x1 = 240 + Math.cos(angle) * inner; const y1 = 367 + Math.sin(angle) * inner;
+      const x2 = 240 + Math.cos(angle) * outer; const y2 = 367 + Math.sin(angle) * outer;
+      g.lineStyle(5, 0x36453c).lineBetween(x1, y1, x2, y2);
+      g.fillStyle(0xe5ba60).fillCircle(x2, y2, 7);
+    }
+    const movingX = 240 + Math.cos(this.shotAngle) * 139;
+    const movingY = 367 + Math.sin(this.shotAngle) * 139;
+    g.lineStyle(5, 0xe46b4b).lineBetween(240, 367, movingX, movingY);
+    g.fillStyle(0xe46b4b).fillCircle(movingX, movingY, 10);
+    this.glyphText('↻', 240, 244, 29, '#526b59');
+    this.promptText.setText(castor ? 'Toca para clavar el siguiente diente sin chocar.' : 'Toca para disparar por un hueco libre.');
+    this.scoreLabel(this.points, 'puntos');
+  }
+
+  private shoot(): void {
+    if (this.ended) return;
+    const collision = this.pegs.some((peg) => {
+      const diff = Math.atan2(Math.sin(peg + this.rotor - this.shotAngle), Math.cos(peg + this.rotor - this.shotAngle));
+      return Math.abs(diff) < 0.23;
+    });
+    if (collision) {
+      this.feedbackText.setText('¡Chocaste con una púa!');
+      this.finish(this.points, this.points ? 1 : 0);
+      return;
+    }
+    this.pegs.push(this.shotAngle - this.rotor);
+    this.points += 1;
+    this.feedbackText.setText('¡Púa clavada en un hueco!');
+    const target = this.game.id === 'castor-lanzador' ? 54 : 26;
+    if (this.points >= target) this.finish(this.points, 1);
+    this.drawRotor();
+  }
+
+  pointerDown(_x: number, y: number): void { if (y >= 225 && y <= 520) this.shoot(); }
+  keyDown(event: KeyboardEvent): void { if (event.code === 'Space' || event.key === 'Enter') { event.preventDefault(); this.shoot(); } }
+}
+
+class WolfLauncherGame extends MiniGame {
+  private phase: 'aim' | 'flight' = 'aim';
+  private angle = 32;
+  private power = 30;
+  private drag?: { x: number; y: number };
+  private distance = 0;
+  private height = 0;
+  private velocityX = 0;
+  private velocityY = 0;
+  private flightSeconds = 0;
+  private bestMeters = 0;
+  private shots = 0;
+  private perfectShots = 0;
+  private freezeMs = 0;
+  private perfectLaunch = false;
+
+  create(): void {
+    this.chrome('Arrastra hacia atrás desde el lobo para elegir el ángulo y la fuerza. Un ángulo perfecto congela el reloj.');
+    this.promptText.setY(184);
+    this.drawFlight();
+  }
+
+  update(delta: number): void {
+    if (this.ended) return;
+    if (this.freezeMs > 0) {
+      this.freezeMs = Math.max(0, this.freezeMs - delta);
+      this.drawFlight();
+      return;
+    }
+    const expired = this.tick(delta);
+    if (this.phase === 'flight') {
+      this.flightSeconds += delta / 1000;
+      const flightDuration = 2 * this.velocityY / 9.81;
+      const flightTime = Math.min(this.flightSeconds, flightDuration);
+      this.distance = this.velocityX * flightTime;
+      this.height = Math.max(0, this.velocityY * flightTime - 4.905 * flightTime * flightTime);
+      if (this.flightSeconds >= flightDuration) {
+        this.height = 0;
+        this.bestMeters = Math.max(this.bestMeters, this.distance);
+        this.shots += 1;
+        this.phase = 'aim';
+        this.distance = 0;
+        this.feedbackText.setText(this.perfectLaunch ? `¡Perfecto! ${this.bestMeters.toFixed(1)} m · elige otro ángulo.` : `El lobo aterrizó · mejor marca ${this.bestMeters.toFixed(1)} m.`);
+      }
+    }
+    this.drawFlight();
+    if (expired) this.finish(this.bestMeters, this.shots ? this.perfectShots / this.shots : 0);
+  }
+
+  private drawFlight(): void {
+    this.beginGlyphFrame();
+    const g = this.graphics;
+    g.clear();
+    g.fillStyle(0xdde9dc).fillRoundedRect(58, 236, 364, 274, 20);
+    g.fillStyle(0x8da96f).fillTriangle(60, 465, 206, 337, 344, 465);
+    g.fillStyle(0x719260).fillTriangle(208, 465, 330, 351, 423, 465);
+    g.lineStyle(4, 0x9a7048).lineBetween(60, 466, 420, 466);
+    const screenX = Phaser.Math.Clamp(94 + this.distance * 3.1, 94, 408);
+    const screenY = Phaser.Math.Clamp(453 - this.height * 2.2, 247, 453);
+    if (this.phase === 'flight') this.glyphText('🐺', screenX, screenY, 31, '#263d34', 'sans-serif');
+    else this.glyphText('🐺', 94, 444, 31, '#263d34', 'sans-serif');
+    if (this.phase === 'aim') {
+      const radians = Phaser.Math.DegToRad(this.angle);
+      const line = this.power * 3.5;
+      g.lineStyle(4, 0xe36c4d).lineBetween(96, 440, 96 + Math.cos(radians) * line, 440 - Math.sin(radians) * line);
+      this.glyphText(`${this.angle}°`, 157, 415, 17, '#324d3c', 'DM Mono, monospace');
+    }
+    const score = this.bestMeters.toFixed(1);
+    this.promptText.setText(this.freezeMs > 0 ? '¡PERFECTO! El reloj se ha detenido.' : this.phase === 'aim' ? `Ángulo ${this.angle}° · fuerza ${this.power} · arrastra para apuntar` : '¡En vuelo! Espera a que aterrice.');
+    this.scoreLabel(Number(score), 'm');
+  }
+
+  private launch(): void {
+    if (this.phase !== 'aim' || this.ended) return;
+    const radians = Phaser.Math.DegToRad(this.angle);
+    this.velocityX = Math.cos(radians) * this.power;
+    this.velocityY = Math.sin(radians) * this.power;
+    this.distance = 0;
+    this.height = 0.1;
+    this.flightSeconds = 0;
+    this.phase = 'flight';
+    this.perfectLaunch = Math.abs(this.angle - 45) <= 4 && this.power >= 27;
+    if (this.perfectLaunch) { this.perfectShots += 1; this.freezeMs = 1400; }
+    this.feedbackText.setText(this.perfectLaunch ? '¡PERFECTO! Reloj congelado.' : '¡Lanzamiento! Sigue la trayectoria.');
+  }
+
+  pointerDown(_x: number, _y: number): void { if (this.phase === 'aim') this.drag = { x: 96, y: 440 }; }
+  pointerMove(x: number, y: number, isDown: boolean): void {
+    if (!isDown || !this.drag || this.phase !== 'aim') return;
+    const pullX = this.drag.x - x; const pullY = y - this.drag.y;
+    if (Math.hypot(pullX, pullY) > 12) {
+      this.angle = Phaser.Math.Clamp(Math.round(Phaser.Math.RadToDeg(Math.atan2(pullY, pullX))), 15, 78);
+      this.power = Phaser.Math.Clamp(Math.round(Math.hypot(pullX, pullY) / 2), 18, 34);
+    }
+    this.drawFlight();
+  }
+  pointerUp(_x: number, _y: number): void { if (this.phase === 'aim') this.launch(); this.drag = undefined; }
+  keyDown(event: KeyboardEvent): void {
+    if (this.phase === 'aim' && event.key === 'ArrowLeft') { event.preventDefault(); this.angle = Phaser.Math.Clamp(this.angle - 3, 15, 78); this.drawFlight(); }
+    else if (this.phase === 'aim' && event.key === 'ArrowRight') { event.preventDefault(); this.angle = Phaser.Math.Clamp(this.angle + 3, 15, 78); this.drawFlight(); }
+    else if (this.phase === 'aim' && event.key === 'ArrowUp') { event.preventDefault(); this.power = Phaser.Math.Clamp(this.power + 1, 18, 34); this.drawFlight(); }
+    else if (this.phase === 'aim' && event.key === 'ArrowDown') { event.preventDefault(); this.power = Phaser.Math.Clamp(this.power - 1, 18, 34); this.drawFlight(); }
+    else if (event.code === 'Space' || event.key === 'Enter') { event.preventDefault(); this.launch(); }
+  }
+}
+
+class OtterLauncherGame extends MiniGame {
+  private phase: 'aim' | 'flight' = 'aim';
+  private angle = 48;
+  private power = 30;
+  private drag?: { x: number; y: number };
+  private ballX = 88;
+  private ballY = 460;
+  private velocityX = 0;
+  private velocityY = 0;
+  private wind = Phaser.Math.Between(-3, 3);
+  private points = 0;
+  private shots = 0;
+  private hits = 0;
+
+  create(): void {
+    this.chrome('Lanza bolas a los flotadores. Ajusta el tiro a la dirección y fuerza del viento.');
+    this.promptText.setY(190);
+    this.drawRange();
+  }
+
+  update(delta: number): void {
+    if (this.ended) return;
+    const expired = this.tick(delta);
+    let targetX = 330 + Math.sin(this.elapsedMs / 760) * 42;
+    let targetY = 337 + Math.sin(this.elapsedMs / 510) * 16;
+    if (this.phase === 'flight') {
+      const steps = Math.max(1, Math.ceil(delta / 30));
+      const stepMs = delta / steps;
+      for (let stepIndex = 0; stepIndex < steps && this.phase === 'flight'; stepIndex += 1) {
+        const stepTimeMs = this.elapsedMs - delta + stepMs * (stepIndex + 1);
+        targetX = 330 + Math.sin(stepTimeMs / 760) * 42;
+        targetY = 337 + Math.sin(stepTimeMs / 510) * 16;
+        const dt = stepMs / 1000;
+        this.velocityX += this.wind * 13 * dt;
+        this.ballX += this.velocityX * dt;
+        this.ballY += this.velocityY * dt;
+        this.velocityY += 184 * dt;
+        if (Math.hypot(this.ballX - targetX, this.ballY - (targetY - 27)) < 27) {
+          this.hits += 1;
+          this.points += 100;
+          this.phase = 'aim';
+          this.wind = Phaser.Math.Between(-3, 3);
+          this.feedbackText.setText('¡Flotador alcanzado! +100 puntos.');
+        } else if (this.ballX > 430 || this.ballY > 500 || this.ballY < 230) {
+          this.phase = 'aim';
+          this.feedbackText.setText('La bola cayó al agua. Ajusta el tiro y prueba de nuevo.');
+        }
+      }
+    }
+    targetX = 330 + Math.sin(this.elapsedMs / 760) * 42;
+    targetY = 337 + Math.sin(this.elapsedMs / 510) * 16;
+    if (this.phase === 'aim') { this.ballX = 88; this.ballY = 460; }
+    this.drawRange(targetX, targetY);
+    if (expired) this.finish(this.points, this.shots ? this.hits / this.shots : 0);
+  }
+
+  private drawRange(targetX = 330, targetY = 337): void {
+    this.beginGlyphFrame();
+    const g = this.graphics;
+    g.clear();
+    g.fillStyle(0xd9edf0).fillRoundedRect(58, 236, 364, 274, 20);
+    g.fillStyle(0x86b0a3, 0.8).fillRect(60, 420, 360, 88);
+    g.lineStyle(4, 0xf2d074).lineBetween(61, 420, 419, 420);
+    g.lineStyle(5, 0x987149).lineBetween(61, 460, 119, 460);
+    g.fillStyle(0x78ac91).fillEllipse(targetX, targetY + 18, 76, 22);
+    g.lineStyle(3, 0x547d70).lineBetween(targetX, targetY - 24, targetX, targetY + 22);
+    g.fillStyle(0xf4d56f).fillCircle(targetX, targetY - 27, 23);
+    g.lineStyle(3, 0xffffff).strokeCircle(targetX, targetY - 27, 23);
+    if (this.phase === 'aim') {
+      const radians = Phaser.Math.DegToRad(this.angle);
+      const velocity = this.power * 10;
+      for (let step = 1; step <= 7; step += 1) {
+        const t = step * 0.13;
+        const x = 88 + Math.cos(radians) * velocity * t + this.wind * 6.5 * t * t;
+        const y = 460 - Math.sin(radians) * velocity * t + 0.5 * 184 * t * t;
+        g.fillStyle(0xffffff, 0.85 - step * 0.08).fillCircle(x, y, Math.max(2, 6 - step * 0.5));
+      }
+    }
+    this.glyphText('🦦', 88, 432, 27, '#263d34', 'sans-serif');
+    g.fillStyle(0xe96e4e).fillCircle(this.ballX, this.ballY, 9);
+    g.fillStyle(0xfff7e7).fillCircle(this.ballX - 2, this.ballY - 3, 3);
+    this.glyphText(`Viento ${this.wind > 0 ? '→' : this.wind < 0 ? '←' : '·'} ${Math.abs(this.wind)}`, 331, 275, 15, '#314c3d', 'DM Mono, monospace');
+    this.promptText.setText(this.phase === 'aim' ? `Ángulo ${this.angle}° · fuerza ${this.power} · arrastra y suelta` : '¡La bola va hacia el flotador!');
+    this.scoreLabel(this.points, 'puntos');
+  }
+
+  private launch(): void {
+    if (this.phase !== 'aim' || this.ended) return;
+    const radians = Phaser.Math.DegToRad(this.angle);
+    const velocity = this.power * 10;
+    this.velocityX = Math.cos(radians) * velocity;
+    this.velocityY = -Math.sin(radians) * velocity;
+    this.ballX = 88; this.ballY = 460;
+    this.phase = 'flight';
+    this.shots += 1;
+    this.feedbackText.setText('¡Lanzamiento! El viento desvía la bola.');
+  }
+
+  pointerDown(_x: number, _y: number): void { if (this.phase === 'aim') this.drag = { x: 88, y: 460 }; }
+  pointerMove(x: number, y: number, isDown: boolean): void {
+    if (!isDown || !this.drag || this.phase !== 'aim') return;
+    const pullX = this.drag.x - x; const pullY = y - this.drag.y;
+    if (Math.hypot(pullX, pullY) > 12) {
+      this.angle = Phaser.Math.Clamp(Math.round(Phaser.Math.RadToDeg(Math.atan2(pullY, pullX))), 18, 75);
+      this.power = Phaser.Math.Clamp(Math.round(Math.hypot(pullX, pullY) / 2), 18, 34);
+    }
+    this.drawRange();
+  }
+  pointerUp(_x: number, _y: number): void { if (this.phase === 'aim') this.launch(); this.drag = undefined; }
+  keyDown(event: KeyboardEvent): void {
+    if (this.phase === 'aim' && event.key === 'ArrowLeft') { event.preventDefault(); this.angle = Phaser.Math.Clamp(this.angle - 3, 18, 75); this.drawRange(); }
+    else if (this.phase === 'aim' && event.key === 'ArrowRight') { event.preventDefault(); this.angle = Phaser.Math.Clamp(this.angle + 3, 18, 75); this.drawRange(); }
+    else if (this.phase === 'aim' && event.key === 'ArrowUp') { event.preventDefault(); this.power = Phaser.Math.Clamp(this.power + 1, 18, 34); this.drawRange(); }
+    else if (this.phase === 'aim' && event.key === 'ArrowDown') { event.preventDefault(); this.power = Phaser.Math.Clamp(this.power - 1, 18, 34); this.drawRange(); }
+    else if (event.code === 'Space' || event.key === 'Enter') { event.preventDefault(); this.launch(); }
+  }
 }
 
 interface Pipe { x: number; gapY: number; passed: boolean; }
