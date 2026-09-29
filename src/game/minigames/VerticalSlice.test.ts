@@ -12,6 +12,7 @@ vi.mock('phaser', () => ({
       DegToRad: (degrees: number) => degrees * Math.PI / 180,
       RadToDeg: (radians: number) => radians * 180 / Math.PI,
     },
+    Display: { Color: { GetColor: () => 0x70a080 } },
   },
 }));
 
@@ -31,6 +32,7 @@ function createController(id: string, onFinish: (result: RunResult) => void = ()
 }
 
 const dedicatedIds = [
+  'gorrion-aleteador', 'erizo-cruzacalles', 'ojo-de-halcon', 'raton-de-laberinto', 'panal-de-la-abeja', 'pulpo-camuflaje',
   'gallo-puntual', 'marmota-cronometro', 'sepia-reflejos', 'paloma-mensajera', 'grillo-ritmico',
   'puas-de-puercoespin', 'castor-lanzador', 'lobo-lunar', 'nutria-lanzadora',
   'rinoceronte-rompemuros', 'topo-golfista', 'topo-golfista-2', 'suricatas-del-minigolf',
@@ -46,15 +48,37 @@ const dedicatedIds = [
   'pinguino-escalador', 'lemur-giratorio', 'guepardo-derrapante', 'liebre-en-la-autopista', 'mantis-cortadora', 'anguila-electrica',
   'gallina-aleteadora', 'murcielago-entre-pinchos', 'arana-tejedora', 'camaleon-columpio',
   'mariposa-pintora', 'oso-encestador', 'flamenco-equilibrista', 'tucan-balancin',
+  'pulga-botadora', 'armadillo-en-picado', 'foca-malabarista', 'jirafa-apiladora',
+  'escarabajo-pelotero', 'burro-de-carga', 'bingo-de-la-oveja',
 ];
 
 describe('controladores específicos del catálogo', () => {
+  it('tiene un controlador ejecutable para cada uno de los 71 minijuegos', () => {
+    expect(dedicatedIds).toHaveLength(71);
+    expect(new Set(dedicatedIds).size).toBe(71);
+    expect(games).toHaveLength(71);
+  });
+
   it.each(dedicatedIds)('%s crea y actualiza una partida', (id) => {
     const controller = createController(id);
     expect(() => {
       controller.create();
       controller.update(16);
     }).not.toThrow();
+  });
+
+  it.each(games.map((game) => [game.id, game.durationSec] as const))('%s devuelve un resultado al terminar el reloj', (id, durationSec) => {
+    let result: RunResult | undefined;
+    const controller = createController(id, (value) => { result = value; });
+    controller.create();
+    controller.pointerDown(240, 400);
+    controller.update(durationSec * 1000);
+    expect(result).toBeDefined();
+    expect(Number.isFinite(result?.score)).toBe(true);
+    expect(result?.score).toBeGreaterThanOrEqual(0);
+    expect(Number.isFinite(result?.accuracy)).toBe(true);
+    expect(result?.accuracy).toBeGreaterThanOrEqual(0);
+    expect(result?.accuracy).toBeLessThanOrEqual(1);
   });
 
   it('el Gallo Puntual completa cinco rondas y devuelve la desviación media', () => {
@@ -221,6 +245,19 @@ describe('controladores específicos del catálogo', () => {
     controller.pointerDown(240, 400);
     controller.update(60_000);
     expect(result).toMatchObject({ score: 10, accuracy: 1 });
+  });
+
+  it('Pulga Botadora rebota en la plataforma que dibuja el jugador', () => {
+    let result: RunResult | undefined;
+    const controller = createController('pulga-botadora', (value) => { result = value; });
+    controller.create();
+    controller.pointerDown(300, 465);
+    controller.pointerMove(380, 465, true);
+    controller.pointerUp(380, 465);
+    for (let frame = 0; frame < 26; frame += 1) controller.update(50);
+    controller.update(60_000);
+    expect(result?.score).toBeGreaterThan(0);
+    expect(result?.accuracy).toBe(1);
   });
 
   it.each(['gallina-aleteadora', 'murcielago-entre-pinchos', 'arana-tejedora', 'camaleon-columpio', 'mariposa-pintora', 'oso-encestador', 'flamenco-equilibrista', 'tucan-balancin'])(

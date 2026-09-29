@@ -16,6 +16,7 @@ export function createMovementSpecialGame(scene: Phaser.Scene, game: GameManifes
     case 'liebre-en-la-autopista': return new HareHighwayGame(...args);
     case 'mantis-cortadora': return new MantisBladeGame(...args);
     case 'anguila-electrica': return new ElectricEelGame(...args);
+    case 'pulga-botadora': return new BouncyFleaGame(...args);
     default: return undefined;
   }
 }
@@ -377,4 +378,75 @@ class ElectricEelGame extends MovementSpecialGame {
   }
   pointerDown(_x: number, y: number): void { if (y >= 250) this.flip(); }
   keyDown(event: KeyboardEvent): void { if (event.key === 'ArrowUp' || event.key === 'ArrowDown' || event.code === 'Space') { event.preventDefault(); this.flip(); } }
+}
+
+class BouncyFleaGame extends MovementSpecialGame {
+  private flea: Point = { x: 240, y: 433 };
+  private vx = 116;
+  private vy = -355;
+  private line?: { start: Point; end: Point; expiresMs: number };
+  private drawing?: Point;
+  private drawEnd?: Point;
+  private score = 0;
+  private combo = 1;
+  private bounces = 0;
+  private misses = 0;
+  private lives = 3;
+
+  create(): void { this.chrome('Dibuja una plataforma bajo la pulga para rebotar. Encadena los saltos y evita los pinchos.'); this.draw(); }
+  update(delta: number): void {
+    if (this.tick(delta)) { this.finish(this.score, this.bounces / Math.max(1, this.bounces + this.misses)); return; }
+    const dt = delta / 1000;
+    if (this.line) { this.line.expiresMs -= delta; if (this.line.expiresMs <= 0) this.line = undefined; }
+    const previousY = this.flea.y;
+    this.vy += 620 * dt; this.flea.x += this.vx * dt; this.flea.y += this.vy * dt;
+    if (this.flea.x < 98 || this.flea.x > 382) this.vx *= -1;
+    this.flea.x = Phaser.Math.Clamp(this.flea.x, 98, 382);
+    if (this.line && this.vy > 0 && previousY < this.line.start.y && this.flea.y >= this.line.start.y) {
+      const low = Math.min(this.line.start.x, this.line.end.x); const high = Math.max(this.line.start.x, this.line.end.x);
+      if (this.flea.x >= low - 14 && this.flea.x <= high + 14) {
+        this.flea.y = this.line.start.y - 15; this.vy = -Math.max(310, Math.abs(this.vy) * 0.92);
+        this.score += this.combo; this.combo += 1; this.bounces += 1; this.line = undefined;
+        this.feedbackText.setText(`¡Rebote! Combo ×${this.combo - 1} · +${this.combo - 1}`);
+      }
+    }
+    if (this.flea.y > 505) {
+      this.lives -= 1; this.misses += 1; this.combo = 1; this.flea = { x: 240, y: 433 }; this.vx *= -1; this.vy = -355; this.line = undefined;
+      this.feedbackText.setText(`¡Cayó en los pinchos! · ♥ ${this.lives}`);
+      if (!this.lives) { this.finish(this.score, this.bounces / Math.max(1, this.bounces + this.misses)); return; }
+    }
+    this.draw();
+  }
+
+  private draw(): void {
+    this.panel(); this.glyphFrame(); this.metric(this.score, 'puntos');
+    this.promptText.setText(`Dibuja una línea bajo la pulga · combo ×${this.combo} · ♥ ${this.lives}`);
+    this.graphics.fillStyle(0xe66c4b).fillTriangle(88, 499, 104, 468, 120, 499).fillTriangle(360, 499, 376, 468, 392, 499);
+    this.graphics.lineStyle(5, 0xe3ded2).lineBetween(110, 504, 370, 504);
+    if (this.line) this.graphics.lineStyle(7, 0x75a77d, 0.78).lineBetween(this.line.start.x, this.line.start.y, this.line.end.x, this.line.end.y);
+    if (this.drawing && this.drawEnd) this.graphics.lineStyle(7, 0xe4b04b).lineBetween(this.drawing.x, this.drawing.y, this.drawEnd.x, this.drawEnd.y);
+    this.graphics.fillStyle(0xe4b04b).fillCircle(this.flea.x, this.flea.y, 13);
+    this.glyph('🦗', this.flea.x, this.flea.y - 1, 23);
+    this.glyph(`${this.bounces} rebotes`, 240, 489, 14, '#718176', 'DM Mono, monospace');
+  }
+
+  pointerDown(x: number, y: number): void {
+    if (y >= 250 && y < 500) { this.drawing = { x, y }; this.drawEnd = { x, y }; }
+  }
+  pointerMove(x: number, y: number, isDown: boolean): void { if (isDown && this.drawing) this.drawEnd = { x, y }; }
+  pointerUp(x: number, y: number): void {
+    if (!this.drawing) return;
+    const start = this.drawing; const end = { x, y };
+    this.drawing = undefined; this.drawEnd = undefined;
+    if (Math.hypot(end.x - start.x, end.y - start.y) >= 48 && start.y > this.flea.y + 8 && Math.abs(end.y - start.y) < 50) {
+      this.line = { start, end, expiresMs: 1700 };
+      this.feedbackText.setText('¡Plataforma lista! Haz que la pulga caiga sobre ella.');
+    }
+    this.draw();
+  }
+  keyDown(event: KeyboardEvent): void {
+    if (event.key === 'ArrowLeft') this.vx = -Math.abs(this.vx);
+    else if (event.key === 'ArrowRight') this.vx = Math.abs(this.vx);
+    else if (event.code === 'Space') { event.preventDefault(); this.vy = -360; }
+  }
 }
