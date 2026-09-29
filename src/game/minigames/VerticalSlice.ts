@@ -7,6 +7,7 @@ import { createArcadeMotionGame } from './ArcadeMotionGames';
 import { createFastActionGame } from './FastActionGames';
 import { createArcadeSkillGame } from './ArcadeSkillGames';
 import { createMovementSpecialGame } from './MovementSpecialGames';
+import { createAdditionalAnimalGame } from './AdditionalAnimalGames';
 
 export interface DedicatedGame {
   create(): void;
@@ -34,6 +35,14 @@ function drawDirectionPad(graphics: Phaser.GameObjects.Graphics): void {
 export function createVerticalSliceGame(scene: Phaser.Scene, game: GameManifest, onFinish: Finish): DedicatedGame | undefined {
   const args: [Phaser.Scene, GameManifest, Finish] = [scene, game, onFinish];
   switch (game.id) {
+    case 'gallina-aleteadora':
+    case 'murcielago-entre-pinchos':
+    case 'arana-tejedora':
+    case 'camaleon-columpio':
+    case 'mariposa-pintora':
+    case 'oso-encestador':
+    case 'flamenco-equilibrista':
+    case 'tucan-balancin': return createAdditionalAnimalGame(...args);
     case 'pinguino-escalador':
     case 'lemur-giratorio':
     case 'guepardo-derrapante':

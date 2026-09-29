@@ -44,6 +44,8 @@ const dedicatedIds = [
   'vencejo-veloz', 'cangrejo-interruptor', 'pajaro-carpintero', 'golondrina-cazadora',
   'libelula-espacial', 'abejorro-propulsado', 'rana-saltarina', 'gecko-trepador', 'canguro-trampolin',
   'pinguino-escalador', 'lemur-giratorio', 'guepardo-derrapante', 'liebre-en-la-autopista', 'mantis-cortadora', 'anguila-electrica',
+  'gallina-aleteadora', 'murcielago-entre-pinchos', 'arana-tejedora', 'camaleon-columpio',
+  'mariposa-pintora', 'oso-encestador', 'flamenco-equilibrista', 'tucan-balancin',
 ];
 
 describe('controladores específicos del catálogo', () => {
@@ -219,5 +221,28 @@ describe('controladores específicos del catálogo', () => {
     controller.pointerDown(240, 400);
     controller.update(60_000);
     expect(result).toMatchObject({ score: 10, accuracy: 1 });
+  });
+
+  it.each(['gallina-aleteadora', 'murcielago-entre-pinchos', 'arana-tejedora', 'camaleon-columpio', 'mariposa-pintora', 'oso-encestador', 'flamenco-equilibrista', 'tucan-balancin'])(
+    '%s termina una partida cronometrada', (id) => {
+      let result: RunResult | undefined;
+      const controller = createController(id, (value) => { result = value; });
+      controller.create();
+      controller.update(60_000);
+      expect(result).toMatchObject({ elapsedMs: 60_000 });
+    },
+  );
+
+  it('el Oso Encestador registra un lanzamiento que cruza el aro', () => {
+    let result: RunResult | undefined;
+    const controller = createController('oso-encestador', (value) => { result = value; });
+    controller.create();
+    controller.pointerDown(130, 456);
+    controller.pointerMove(50, 346, true);
+    controller.pointerUp(50, 346);
+    for (let frame = 0; frame < 20; frame += 1) controller.update(50);
+    controller.update(60_000);
+    expect(result?.score).toBe(1);
+    expect(result?.accuracy).toBe(1);
   });
 });
