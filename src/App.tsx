@@ -7,6 +7,7 @@ import {
   type DailyRecord, type LocalState,
 } from './core/storage';
 import type { RunResult } from './game/ArcadeScene';
+import { animalArtUrl } from './game/animalArt';
 
 const GameStage = lazy(() => import('./game/GameStage').then((module) => ({ default: module.GameStage })));
 
@@ -202,7 +203,7 @@ function App() {
 
       {introGame && <GameIntro game={introGame.game} mode={introGame.mode} challenge={challenge} record={record} dice={state.dice} onClose={() => setIntroGame(null)} onStart={startGame} />}
       {activeRun && <GameOverlay game={activeRun.game} mode={activeRun.mode} onExit={() => { setActiveRun(null); setMessage(activeRun.mode === 'ranked' ? 'La partida se cerró y el intento quedó usado.' : 'Has salido del entrenamiento.'); }} onFinish={finishGame} />}
-      {finishedRun && <ResultModal run={finishedRun} dice={state.dice} onClose={closeFinished} />}
+      {finishedRun && <ResultModal run={finishedRun} dice={state.dice} onClose={closeFinished} onReplay={() => { setActiveRun({ game: finishedRun.game, mode: 'practice' }); setFinishedRun(null); }} />}
       {message && <Toast message={message} onClose={() => setMessage('')} />}
     </div>
   );
@@ -296,7 +297,7 @@ function TrainingScreen(props: {
     </div>
     {props.games.length ? <div className="game-grid">
       {props.games.map((game, index) => <button className="game-tile" key={game.id} onClick={() => props.onSelect(game)}>
-        <span className={`tile-art tile-color-${index % 5}`}><span className="tile-number">{String(games.indexOf(game) + 1).padStart(2, '0')}</span><span className="tile-animal">{game.emoji}</span><span className="tile-open">↗</span></span>
+        <span className={`tile-art tile-color-${index % 5}`}><span className="tile-number">{String(games.indexOf(game) + 1).padStart(2, '0')}</span><img className="tile-animal tile-illustration" src={animalArtUrl(game.emoji)} alt="" loading="lazy" /><span className="tile-open">↗</span></span>
         <span className="tile-copy"><span className="tile-category">{game.category}</span><strong>{game.name}</strong><small>{game.metric} · ~{game.durationSec}s</small></span>
       </button>)}
     </div> : <div className="empty-state"><span>🔎</span><strong>No encontramos ese juego</strong><p>Prueba con otro nombre o categoría.</p></div>}
@@ -345,7 +346,7 @@ function GameIntro(props: { game: GameManifest; mode: GameMode; challenge: Daily
   return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && props.onClose()}>
     <section className="intro-modal" role="dialog" aria-modal="true" aria-labelledby="intro-title">
       <button className="modal-close" onClick={props.onClose} aria-label="Cerrar">×</button>
-      <div className="intro-art"><span className="intro-star">✦</span><span>{props.game.emoji}</span><small>{ranked ? `RETO DE HOY · DÍA ${props.challenge.dayOfSeason}/21` : 'ENTRENAMIENTO · SIN LÍMITE'}</small></div>
+      <div className="intro-art"><span className="intro-star">✦</span><span><img className="intro-illustration" src={animalArtUrl(props.game.emoji)} alt="" /></span><small>{ranked ? `RETO DE HOY · DÍA ${props.challenge.dayOfSeason}/21` : 'ENTRENAMIENTO · SIN LÍMITE'}</small></div>
       <div className="intro-content"><span className="eyebrow">{props.game.category}</span><h2 id="intro-title">{props.game.name}</h2><p>{props.game.instructions}</p>
         <div className="rule-facts"><span><small>DURACIÓN</small><strong>~{props.game.durationSec} s</strong></span><span><small>MARCADOR</small><strong>{props.game.metric} · {props.game.direction === 'higher' ? 'más' : 'menos'} es mejor</strong></span><span><small>TOP 1 %</small><strong>{props.game.benchmark}</strong></span><span><small>FIABILIDAD</small><strong>{props.game.confidence}</strong></span></div>
         {ranked && <div className="ranked-notice">{props.record.attemptsUsed < 2 ? `${2 - props.record.attemptsUsed} intento${props.record.attemptsUsed === 0 ? 's' : ''} de 2 disponible${props.record.attemptsUsed === 0 ? 's' : ''}.` : `Intento extra · gastarás 1 dado (tienes ${props.dice}).`} Tu mejor marca es la que cuenta.</div>}
@@ -358,19 +359,20 @@ function GameIntro(props: { game: GameManifest; mode: GameMode; challenge: Daily
 }
 
 function GameOverlay(props: { game: GameManifest; mode: GameMode; onFinish: (result: RunResult) => void; onExit: () => void }) {
-  return <div className="game-overlay"><div className="game-overlay-top"><span className="game-mode-tag">{props.mode === 'practice' ? '◎ ENTRENAMIENTO' : '✦ RETO DIARIO'}</span><button onClick={props.onExit} aria-label="Salir de la partida">×</button></div><Suspense fallback={<div className="game-loading">Preparando la partida…</div>}><GameStage game={props.game} onFinish={props.onFinish} /></Suspense><div className="game-overlay-foot">{props.mode === 'practice' ? 'Puedes repetir este juego cuando quieras.' : 'Tu mejor resultado se guarda para el reto de hoy.'}</div></div>;
+  return <div className="game-overlay"><div className="game-overlay-top"><span className="game-mode-tag">{props.mode === 'practice' ? '◎ ENTRENAMIENTO' : '✦ RETO DIARIO'}</span><button onClick={props.onExit} aria-label="Salir de la partida">×</button></div><Suspense fallback={<div className="game-loading">Preparando la partida…</div>}><GameStage game={props.game} onFinish={props.onFinish} practice={props.mode === 'practice'} /></Suspense><div className="game-overlay-foot">{props.mode === 'practice' ? 'Puedes repetir este juego cuando quieras.' : 'Tu mejor resultado se guarda para el reto de hoy.'}</div></div>;
 }
 
-function ResultModal(props: { run: FinishedRun; dice: number; onClose: () => void }) {
+function ResultModal(props: { run: FinishedRun; dice: number; onClose: () => void; onReplay: () => void }) {
   const improved = props.run.improved;
   return <div className="modal-backdrop"><section className="result-modal" role="dialog" aria-modal="true" aria-labelledby="result-title">
-    <div className="result-confetti">✦　✳　✦</div><div className="result-animal">{props.run.game.emoji}</div>
+    <div className="result-confetti">✦　✳　✦</div><div className="result-animal"><img src={animalArtUrl(props.run.game.emoji)} alt="" /></div>
     <span className="eyebrow">{props.run.mode === 'practice' ? 'ENTRENAMIENTO COMPLETADO' : 'RETO COMPLETADO'}</span>
     <h2 id="result-title">{props.run.mode === 'practice' ? '¡Buen ensayo!' : improved ? '¡Nueva marca!' : '¡Partida completada!'}</h2>
     <div className="result-score">{formatScore(props.run.result.score, props.run.game.unit)}</div><div className="result-metric">{props.run.game.metric} · {props.run.game.direction === 'higher' ? 'más es mejor' : 'menos es mejor'}</div>
     {props.run.mode === 'ranked' ? <div className="result-note">{improved ? 'Tu mejor puntuación de hoy se ha actualizado.' : `Tu mejor marca sigue en ${formatScore(props.run.bestScore, props.run.game.unit)}.`}<br />Has ganado un dado si no lo habías ganado hoy. 🎲 {props.dice}</div> : <div className="result-note">Esta partida queda fuera del marcador. Puedes repetirla desde Entrenamiento.</div>}
     <div className="result-benchmark"><span>Referencia Top 1 %</span><strong>{props.run.game.benchmark}</strong></div>
-    <button className="primary-button result-button" onClick={props.onClose}>Seguir explorando <span>→</span></button>
+    {props.run.mode === 'practice' && <button className="primary-button result-button" onClick={props.onReplay}>↻ Volver a jugar</button>}
+    <button className={props.run.mode === 'practice' ? 'plain-close' : 'primary-button result-button'} onClick={props.onClose}>Seguir explorando <span>→</span></button>
   </section></div>;
 }
 

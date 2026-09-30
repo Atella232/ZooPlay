@@ -1,4 +1,4 @@
-const CACHE_NAME = 'zooplay-shell-v2';
+const CACHE_NAME = 'zooplay-shell-v3-arcade';
 const CACHE_PREFIX = 'zooplay-';
 const APP_ROOT = self.registration.scope;
 const APP_SHELL = ['', 'manifest.webmanifest', 'icon-192.svg', 'icon-512.svg'].map((path) => new URL(path, APP_ROOT).toString());

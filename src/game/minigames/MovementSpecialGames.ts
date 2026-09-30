@@ -1,3 +1,4 @@
+import { createGameChrome, drawPlayfield, animalGlyph, beginAnimalFrame } from '../presentation';
 import Phaser from 'phaser';
 import type { GameManifest } from '../../data/games';
 import type { RunResult } from '../ArcadeScene';
@@ -39,23 +40,15 @@ abstract class MovementSpecialGame implements DedicatedGame {
   }
 
   protected chrome(instructions: string): void {
-    this.scene.add.rectangle(240, 360, 480, 720, 0xf7f4e9);
-    this.scene.add.circle(50, 205, 92, 0xf2dfbc, 0.42);
-    this.scene.add.circle(440, 490, 120, 0xdce9d9, 0.48);
-    this.scene.add.text(28, 26, 'ZOOPLAY  /  PARTIDA', { fontFamily: 'DM Mono, monospace', fontSize: '12px', color: '#718176', letterSpacing: 1.4 });
-    this.scene.add.text(28, 53, this.game.name, { fontFamily: 'DM Sans, sans-serif', fontSize: '27px', fontStyle: 'bold', color: '#213b32', wordWrap: { width: 395 } });
-    this.scoreText = this.scene.add.text(28, 105, `${this.game.metric}: 0`, { fontFamily: 'DM Mono, monospace', fontSize: '14px', color: '#213b32' });
-    this.timerText = this.scene.add.text(452, 105, this.timeLabel(this.game.durationSec * 1000), { fontFamily: 'DM Mono, monospace', fontSize: '14px', color: '#213b32' }).setOrigin(1, 0);
-    this.promptText = this.scene.add.text(240, 165, instructions, { fontFamily: 'DM Sans, sans-serif', fontSize: '15px', fontStyle: 'bold', color: '#334f40', align: 'center', wordWrap: { width: 400 }, lineSpacing: 5 }).setOrigin(0.5);
-    this.feedbackText = this.scene.add.text(240, 544, '', { fontFamily: 'DM Sans, sans-serif', fontSize: '15px', fontStyle: 'bold', color: '#e26843', align: 'center', wordWrap: { width: 390 } }).setOrigin(0.5);
-    this.graphics = this.scene.add.graphics();
-    this.scene.add.rectangle(240, 633, 414, 92, 0xf0ede2, 0.86).setStrokeStyle(1, 0xe7e1d2);
+    const chrome = createGameChrome(this.scene, this.game, instructions);
+    this.graphics = chrome.graphics;
+    this.scoreText = chrome.scoreText;
+    this.timerText = chrome.timerText;
+    this.promptText = chrome.promptText;
+    this.feedbackText = chrome.feedbackText;
   }
 
-  protected panel(): void {
-    this.graphics.clear();
-    this.graphics.fillStyle(0xfffdf6).lineStyle(2, 0xe7e1d2).fillRoundedRect(48, 232, 384, 288, 22).strokeRoundedRect(48, 232, 384, 288, 22);
-  }
+  protected panel(): void { drawPlayfield(this.graphics, this.game); }
 
   protected tick(delta: number): boolean {
     if (this.ended) return true;
@@ -72,9 +65,10 @@ abstract class MovementSpecialGame implements DedicatedGame {
     return min + (this.seed % (max - min + 1));
   }
 
-  protected glyphFrame(): void { this.glyphCursor = 0; this.glyphs.forEach((glyph) => glyph.setVisible(false)); }
+  protected glyphFrame(): void { beginAnimalFrame(this.scene); this.glyphCursor = 0; this.glyphs.forEach((glyph) => glyph.setVisible(false)); }
 
   protected glyph(value: string, x: number, y: number, size = 20, color = '#263d34', font = 'DM Sans, sans-serif'): void {
+    if (animalGlyph(this.scene, value, x, y, size)) return;
     let glyph = this.glyphs[this.glyphCursor];
     if (!glyph) {
       glyph = this.scene.add.text(-100, -100, '', { fontFamily: font, fontSize: `${size}px`, color, align: 'center' }).setOrigin(0.5).setDepth(4);
@@ -112,122 +106,158 @@ class PenguinIceClimbGame extends MovementSpecialGame {
   private score = 0;
   private attempts = 0;
   private perfect = 0;
-  private feedbackMs = 0;
+  private lives = 3;
+  private phase: 'swing' | 'flight' | 'recover' = 'swing';
+  private player = { x: 240, y: 375, vx: 0, vy: 0 };
+  private direction = 1;
+  private recoverMs = 0;
+  private trail: Point[] = [];
 
-  create(): void { this.chrome('Toca cuando el pingüino atraviese la zona verde del columpio. Cada aterrizaje perfecto suma 10 metros.'); this.draw(); }
-  update(delta: number): void { if (this.tick(delta)) { this.finish(this.score, this.perfect / Math.max(1, this.attempts)); return; } this.feedbackMs = Math.max(0, this.feedbackMs - delta); this.draw(); }
-
-  private tap(): void {
-    if (this.ended) return;
-    const markerX = 240 + Math.sin(this.elapsedMs / 325) * 150;
-    const deviation = Math.abs(markerX - 240);
-    this.attempts += 1;
-    if (deviation < 18) { this.score += 10; this.perfect += 1; this.feedbackText.setText('¡Perfecto! +10 m'); }
-    else if (deviation < 44) { this.score += 5; this.feedbackText.setText('¡Buen aterrizaje! +5 m'); }
-    else this.feedbackText.setText('Aterrizaje fuera de la zona.');
-    this.feedbackMs = 200;
+  create(): void { this.chrome('Balancea al pingüino y toca para saltar. Aterriza sobre la plataforma helada: el centro da +10 m.'); this.draw(); }
+  private angle(): number { return Math.sin(this.elapsedMs / 600) * .95; }
+  private launchValues(): {x:number;y:number;vx:number;vy:number} {
+    const a=this.angle();
+    return {x:240+Math.sin(a)*100,y:285+Math.cos(a)*90,vx:this.direction*(150+Math.cos(a)*20),vy:-130-Math.sin(a)*90};
+  }
+  update(delta: number): void {
+    if (this.tick(delta)) { this.finish(this.score, this.perfect / Math.max(1, this.attempts)); return; }
+    if(this.phase==='flight') {
+      const steps=Math.max(1,Math.ceil(delta/16)),dt=delta/steps/1000;
+      for(let step=0;step<steps && this.phase==='flight';step++) {
+        const oldY=this.player.y;
+        this.player.vy+=650*dt;this.player.x+=this.player.vx*dt;this.player.y+=this.player.vy*dt;
+        if(oldY<=430 && this.player.y>=430 && this.player.vy>0) {
+          const error=Math.abs(this.player.x-(this.direction>0?350:130));
+          if(error<45) {
+            const perfect=error<17;this.score+=perfect?10:5;this.perfect+=perfect?1:0;
+            this.feedbackText.setText(perfect?'¡Aterrizaje perfecto! +10 m':'¡Buen salto! +5 m');
+            this.direction*=-1;this.phase='recover';this.recoverMs=500;
+          }
+        }
+        if(this.player.y>530 || this.player.x<-10 || this.player.x>490) this.miss();
+      }
+      this.trail.push({x:this.player.x,y:this.player.y});if(this.trail.length>14)this.trail.shift();
+    } else if(this.phase==='recover') { this.recoverMs-=delta;if(this.recoverMs<=0)this.phase='swing'; }
     this.draw();
   }
-
+  private miss():void {this.lives--;this.phase='recover';this.recoverMs=650;this.feedbackText.setText(`¡Al agua! Te quedan ${this.lives} vidas.`);if(!this.lives)this.finish(this.score,this.perfect/Math.max(1,this.attempts));}
+  private tap(): void { if(this.ended || this.phase!=='swing')return;this.attempts++;this.player=this.launchValues();this.phase='flight';this.trail=[]; }
   private draw(): void {
     this.panel(); this.glyphFrame(); this.metric(this.score, 'm');
-    const markerX = 240 + Math.sin(this.elapsedMs / 325) * 150;
-    this.promptText.setText('Toca cuando pase por la zona verde.');
-    this.graphics.lineStyle(14, 0xd9ded2).lineBetween(86, 405, 394, 405);
-    this.graphics.lineStyle(14, 0x78ae7c).lineBetween(222, 405, 258, 405);
-    this.graphics.lineStyle(4, 0x516c58).lineBetween(markerX, 365, markerX, 445);
-    this.graphics.fillStyle(0x496851).fillCircle(markerX, 357, 17);
-    this.glyph('🐧', markerX, 354, 27);
-    this.glyph(`${this.score} m  ·  ${this.perfect} perfectos`, 240, 478, 15, '#718176', 'DM Mono, monospace');
-    this.glyph('TOCA PARA SALTAR', 240, 499, 13, '#718176', 'DM Mono, monospace');
+    const g=this.graphics,target=this.direction>0?350:130;
+    this.promptText.setText(`Salta hacia la plataforma · ♥ ${this.lives}`);
+    g.fillStyle(0xb0dce7).fillRoundedRect(47,233,386,286,22);
+    g.fillStyle(0xeaf9fc).fillTriangle(50,470,145,287,260,470).fillTriangle(222,480,358,265,433,480);
+    g.fillStyle(0x74bbd2).fillRect(48,486,384,33);
+    for(let i=0;i<5;i++)g.lineStyle(2,0xc8f1f7,.6).lineBetween(56+i*81,503,101+i*81,503);
+    g.fillStyle(0x6bacbf).fillRoundedRect(target-45,434,90,34,8);
+    g.fillStyle(0xf8ffff).fillRoundedRect(target-45,429,90,11,5);
+    g.fillStyle(0x7ecb8b).fillRoundedRect(target-17,429,34,9,4);
+    g.fillStyle(0x6e8fa2).fillCircle(240,285,8);
+    const p=this.phase==='swing'?this.launchValues():this.player;
+    if(this.phase==='swing') {
+      g.lineStyle(3,0x668fa2).lineBetween(240,285,p.x,p.y);
+      const t=(-p.vy+Math.sqrt(p.vy*p.vy+2*650*(430-p.y)))/650;
+      const landing=p.x+p.vx*t;
+      for(let i=1;i<=12;i++){const time=t*i/12;g.fillStyle(Math.abs(landing-target)<45?0x4d9a77:0xffffff,.6).fillCircle(p.x+p.vx*time,p.y+p.vy*time+325*time*time,2);}
+      this.glyph('TOCA PARA SOLTAR',240,630,16,'#35677b');
+    }
+    this.trail.forEach((point,i)=>g.fillStyle(0xffffff,i/this.trail.length*.65).fillCircle(point.x,point.y,3));
+    this.glyph('🐧',p.x,p.y,32);
+    this.glyph(`${this.score} metros escalados`,240,677,13,'#456a76','DM Mono, monospace');
   }
-
-  pointerDown(_x: number, y: number): void { if (y >= 250) this.tap(); }
-  keyDown(event: KeyboardEvent): void { if (event.code === 'Space' || event.key === 'Enter') { event.preventDefault(); this.tap(); } }
+  pointerDown(_x:number,y:number):void {if(y>=235)this.tap();}
+  keyDown(event:KeyboardEvent):void {if(event.code==='Space'||event.key==='Enter'){event.preventDefault();this.tap();}}
 }
 
 class LemurSwingGame extends MovementSpecialGame {
-  private score = 0;
-  private attempts = 0;
-  private successful = 0;
-  private lastAttempt = -1000;
-
-  create(): void { this.chrome('Engánchate en el tramo rojo de la curva y suéltate al apuntar al siguiente tramo.'); this.draw(); }
-  update(delta: number): void { if (this.tick(delta)) { this.finish(this.score, this.successful / Math.max(1, this.attempts)); return; } this.draw(); }
-
-  private release(): void {
-    if (this.ended || this.elapsedMs - this.lastAttempt < 650) return;
-    this.lastAttempt = this.elapsedMs; this.attempts += 1;
-    const phase = (this.elapsedMs % 2200) / 2200;
-    const inRedZone = phase >= 0.35 && phase <= 0.49;
-    if (inRedZone) { this.score += 1; this.successful += 1; this.feedbackText.setText('¡Se soltó en el punto perfecto! +1'); }
-    else this.feedbackText.setText('Suelta al llegar a la curva roja.');
+  private score=0;
+  private attempts=0;
+  private successful=0;
+  private lives=3;
+  private phase:'waiting'|'swing'|'flight'|'recover'='waiting';
+  private angle=-1;
+  private recoverMs=0;
+  private player={x:156,y:354,vx:0,vy:0};
+  private trail:Point[]=[];
+  create():void {this.chrome('Mantén para engancharte a la liana. Suelta cuando el lémur mire hacia la plataforma siguiente.');this.draw();}
+  update(delta:number):void {
+    if(this.tick(delta)){this.finish(this.score,this.successful/Math.max(1,this.attempts));return;}
+    const dt=delta/1000;
+    if(this.phase==='swing'){
+      this.angle+=dt*2;this.player.x=240+Math.sin(this.angle)*100;this.player.y=285+Math.cos(this.angle)*100;
+      if(this.angle>1.25)this.release();
+    }else if(this.phase==='flight'){
+      const steps=Math.max(1,Math.ceil(delta/16)),sub=dt/steps;
+      for(let i=0;i<steps&&this.phase==='flight';i++){
+        const y=this.player.y;this.player.vy+=700*sub;this.player.x+=this.player.vx*sub;this.player.y+=this.player.vy*sub;
+        if(y<=435&&this.player.y>=435&&this.player.vy>0&&Math.abs(this.player.x-360)<42){
+          this.score++;this.successful++;this.feedbackText.setText('¡De liana en liana! +1');this.phase='recover';this.recoverMs=550;
+        }
+        if(this.player.x>455||this.player.y>527){this.lives--;this.feedbackText.setText(`Caíste de la liana · ♥ ${this.lives}`);this.phase='recover';this.recoverMs=650;if(!this.lives)this.finish(this.score,this.successful/Math.max(1,this.attempts));}
+      }
+      this.trail.push({x:this.player.x,y:this.player.y});if(this.trail.length>12)this.trail.shift();
+    }else if(this.phase==='recover'){this.recoverMs-=delta;if(this.recoverMs<=0){this.phase='waiting';this.angle=-1;this.player={x:156,y:354,vx:0,vy:0};}}
     this.draw();
   }
-
-  private draw(): void {
-    this.panel(); this.glyphFrame(); this.metric(this.score, 'puntos');
-    const phase = (this.elapsedMs % 2200) / 2200;
-    const angle = -Math.PI * 0.8 + phase * Math.PI * 1.55;
-    const x = 240 + Math.cos(angle) * 116; const y = 405 + Math.sin(angle) * 95;
-    this.promptText.setText('Espera a que el lémur alcance el tramo rojo.');
-    this.graphics.lineStyle(4, 0xc9b58d).lineBetween(240, 281, x, y);
-    this.graphics.lineStyle(16, 0x78a17a).beginPath().arc(240, 405, 116, -Math.PI * 0.8, -Math.PI * 0.35, false).strokePath();
-    this.graphics.lineStyle(17, 0xe26f50).beginPath().arc(240, 405, 116, -Math.PI * 0.35, -Math.PI * 0.08, false).strokePath();
-    this.graphics.fillStyle(0x40392f).fillCircle(x, y, 18);
-    this.glyph('🐒', x, y, 25);
-    this.glyph('Toca / suelta', 240, 492, 14, '#718176', 'DM Mono, monospace');
+  private attach():void{if(this.ended||this.phase!=='waiting')return;this.phase='swing';this.angle=-1;this.trail=[];}
+  private release():void{
+    if(this.ended||this.phase!=='swing')return;this.attempts++;this.phase='flight';this.player.vx=Math.cos(this.angle)*230;this.player.vy=-Math.sin(this.angle)*190-100;
   }
-  pointerDown(_x: number, y: number): void { if (y >= 250) this.release(); }
-  keyDown(event: KeyboardEvent): void { if (event.code === 'Space' || event.key === 'Enter') { event.preventDefault(); this.release(); } }
+  private draw():void{
+    this.panel();this.glyphFrame();this.metric(this.score,'puntos');const g=this.graphics;
+    this.promptText.setText(this.phase==='waiting'?`Mantén para agarrar la liana · ♥ ${this.lives}`:this.phase==='swing'?'Suelta al pasar por la zona verde':'¡Busca la siguiente plataforma!');
+    g.fillStyle(0x88b995,.2).fillCircle(115,294,65).fillCircle(365,304,70);
+    g.fillStyle(0xa18159).fillRoundedRect(74,445,109,15,6).fillRoundedRect(318,438,85,17,6);
+    g.fillStyle(0x7bc58c).fillRoundedRect(318,432,85,10,5);
+    g.lineStyle(4,0x597954).lineBetween(240,244,240,285);
+    g.lineStyle(4,0xb8d58b,.7).beginPath().arc(240,285,100,.35,2.75,false).strokePath();
+    g.lineStyle(8,0x66b289).beginPath().arc(240,285,100,1.4,1.72,false).strokePath();
+    if(this.phase==='waiting'||this.phase==='swing')g.lineStyle(3,0x91a362).lineBetween(240,285,this.player.x,this.player.y);
+    this.trail.forEach((p,i)=>g.fillStyle(0xe6efc7,i/this.trail.length).fillCircle(p.x,p.y,3));
+    this.glyph('🐒',this.player.x,this.player.y,32);
+    this.glyph(this.phase==='swing'?'SUELTA':'MANTÉN PARA AGARRAR',240,630,16,'#3d6c4c');
+    this.glyph('Espacio: agarrar / soltar',240,670,12,'#5d796b','DM Mono, monospace');
+  }
+  pointerDown(_x:number,y:number):void{if(y>=235)this.attach();}
+  pointerUp():void{this.release();}
+  keyDown(event:KeyboardEvent):void{if(event.code==='Space'||event.key==='Enter'){event.preventDefault();if(this.phase==='waiting')this.attach();else this.release();}}
 }
 
 class CheetahZigzagGame extends MovementSpecialGame {
-  private score = 0;
-  private lives = 3;
-  private turns = 0;
-  private hit = 0;
-  private phase = 0;
-  private lastTap = -1000;
-  private path: Point[] = [];
-
-  create(): void { this.chrome('Toca justo cuando el guepardo llegue a cada curva del zigzag.'); this.makePath(); this.draw(); }
-  update(delta: number): void {
-    if (this.tick(delta)) { this.finish(this.score, this.hit / Math.max(1, this.turns)); return; }
-    this.phase = (this.phase + delta / Math.max(520, 1040 - this.score * 5)) % 1;
+  private score=0;
+  private lives=3;
+  private turns=0;
+  private hit=0;
+  private along=0;
+  private segment=0;
+  private recovery=0;
+  private path:Point[]=[];
+  create():void{this.chrome('Toca antes de cada curva para derrapar. Si no giras a tiempo, el guepardo se sale de la pista.');this.path=Array.from({length:7},(_,i)=>({x:i%2?340:140,y:275+i*35}));this.draw();}
+  update(delta:number):void{
+    if(this.tick(delta)){this.finish(this.score,this.hit/Math.max(1,this.turns));return;}
+    if(this.recovery>0){this.recovery-=delta;this.draw();return;}
+    this.along+=delta/Math.max(600,1250-this.score*15);
+    if(this.along>1.12){this.turns++;this.lives--;this.feedbackText.setText(`Te saliste de la curva · ♥ ${this.lives}`);this.along=0;this.segment=(this.segment+1)%6;this.recovery=450;if(!this.lives){this.finish(this.score,this.hit/Math.max(1,this.turns));return;}}
     this.draw();
   }
-
-  private makePath(): void { this.path = Array.from({ length: 7 }, (_, index) => ({ x: index % 2 ? 340 : 140, y: 294 + index * 32 })); }
-
-  private tap(): void {
-    if (this.ended || this.elapsedMs - this.lastTap < 300) return;
-    this.lastTap = this.elapsedMs;
-    const distanceToTurn = Math.min(...this.path.slice(1, -1).map((_, index) => Math.abs(this.phase - (index + 1) / (this.path.length - 1))));
-    this.turns += 1;
-    if (distanceToTurn < 0.12) { this.score += 1; this.hit += 1; this.feedbackText.setText('¡Derrape perfecto! +1'); }
-    else {
-      this.lives -= 1; this.feedbackText.setText(`Te saliste en la curva · ♥ ${this.lives}`);
-      if (!this.lives) this.finish(this.score, this.hit / Math.max(1, this.turns));
-    }
-    this.draw();
+  private tap():void{
+    if(this.ended||this.recovery>0)return;
+    if(this.along<.66){this.feedbackText.setText('Todavía falta: espera a la curva.');return;}
+    this.turns++;this.hit++;this.score++;this.feedbackText.setText(this.along>.85?'¡Derrape perfecto! +1':'¡Buena curva! +1');this.segment=(this.segment+1)%6;this.along=0;this.draw();
   }
-
-  private draw(): void {
-    this.panel(); this.glyphFrame(); this.metric(this.score, 'puntos');
-    this.promptText.setText(`Sigue la curva sin salirte · ♥ ${this.lives}`);
-    for (let index = 1; index < this.path.length; index += 1) this.graphics.lineStyle(24, 0xdfe9d8).lineBetween(this.path[index - 1].x, this.path[index - 1].y, this.path[index].x, this.path[index].y);
-    for (let index = 1; index < this.path.length - 1; index += 1) this.graphics.fillStyle(0xe56b4b).fillCircle(this.path[index].x, this.path[index].y, 6);
-    const segment = Math.min(this.path.length - 2, Math.floor(this.phase * (this.path.length - 1)));
-    const along = this.phase * (this.path.length - 1) - segment;
-    const a = this.path[segment]; const b = this.path[segment + 1];
-    const x = a.x + (b.x - a.x) * along; const y = a.y + (b.y - a.y) * along;
-    this.graphics.fillStyle(0xe1a349).fillCircle(x, y, 17);
-    this.glyph('🐆', x, y, 24);
-    this.glyph('TOCA EN LA CURVA', 240, 500, 13, '#718176', 'DM Mono, monospace');
+  private draw():void{
+    this.panel();this.glyphFrame();this.metric(this.score,'curvas');const g=this.graphics;
+    this.promptText.setText(`Gira cuando el guepardo llegue a la marca · ♥ ${this.lives}`);
+    for(let i=1;i<this.path.length;i++){g.lineStyle(30,0xc6cfab).lineBetween(this.path[i-1].x,this.path[i-1].y,this.path[i].x,this.path[i].y);g.lineStyle(2,0xfffdf3,.8).lineBetween(this.path[i-1].x,this.path[i-1].y,this.path[i].x,this.path[i].y);}
+    const a=this.path[this.segment],b=this.path[this.segment+1],t=Math.min(1.13,this.along);
+    g.fillStyle(this.along>.66?0x77b876:0xe5a25a).fillCircle(b.x,b.y,18);g.lineStyle(3,0xffffff).strokeCircle(b.x,b.y,13);
+    this.glyph('🐆',a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t,26);
+    g.fillStyle(0xd1dfc3).fillRoundedRect(95,615,290,12,6);g.fillStyle(this.along>.66?0x71a97a:0xe5a15b).fillRoundedRect(95,615,290*Math.min(1,this.along),12,6);
+    this.glyph(this.along>.66?'¡GIRA AHORA!':'ACÉRCATE A LA CURVA',240,658,14,'#416943','DM Mono, monospace');
   }
-  pointerDown(_x: number, y: number): void { if (y >= 250) this.tap(); }
-  keyDown(event: KeyboardEvent): void { if (event.code === 'Space' || event.key === 'Enter') { event.preventDefault(); this.tap(); } }
+  pointerDown(_x:number,y:number):void{if(y>=235)this.tap();}
+  keyDown(event:KeyboardEvent):void{if(event.code==='Space'||event.key==='Enter'){event.preventDefault();this.tap();}}
 }
 
 class HareHighwayGame extends MovementSpecialGame {

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { games } from '../../data/games';
 import type { RunResult } from '../ArcadeScene';
 import { createVerticalSliceGame } from './VerticalSlice';
+import { DONKEY_LEVELS } from './PolishedClassicGames';
 
 vi.mock('phaser', () => ({
   default: {
@@ -243,6 +244,7 @@ describe('controladores específicos del catálogo', () => {
     const controller = createController('pinguino-escalador', (value) => { result = value; });
     controller.create();
     controller.pointerDown(240, 400);
+    for (let frame = 0; frame < 50; frame++) controller.update(16);
     controller.update(60_000);
     expect(result).toMatchObject({ score: 10, accuracy: 1 });
   });
@@ -281,5 +283,112 @@ describe('controladores específicos del catálogo', () => {
     controller.update(60_000);
     expect(result?.score).toBe(1);
     expect(result?.accuracy).toBe(1);
+  });
+});
+
+describe('jugabilidad de la revisión arcade', () => {
+  const key = (value: string) => ({ key: value, code: value === ' ' ? 'Space' : value, preventDefault() {} } as KeyboardEvent);
+  const advance = (controller: ReturnType<typeof createController>, ms: number) => {
+    for (let remaining = ms; remaining > 0; remaining -= 16) controller.update(Math.min(16, remaining));
+  };
+  it('Lémur aterriza después de agarrar, balancearse y soltar la liana', () => {
+    let result: RunResult | undefined;
+    const c = createController('lemur-giratorio', r => { result = r; });
+    c.create(); c.pointerDown(240, 400); advance(c, 500); c.pointerUp(240, 400); advance(c, 700); c.update(60_000);
+    expect(result).toMatchObject({ score: 1, accuracy: 1 });
+  });
+  it('Guepardo pierde al ignorar las curvas y puntúa al girar a tiempo', () => {
+    let unattended: RunResult | undefined;
+    const idle = createController('guepardo-derrapante', r => { unattended = r; });
+    idle.create(); advance(idle, 7000);
+    expect(unattended).toMatchObject({ score: 0, accuracy: 0 });
+    let driven: RunResult | undefined;
+    const c = createController('guepardo-derrapante', r => { driven = r; });
+    c.create(); advance(c, 1000); c.pointerDown(240, 400); c.update(60_000);
+    expect(driven).toMatchObject({ score: 1, accuracy: 1 });
+  });
+  it('Jirafa deja caer y apila un bloque alineado', () => {
+    let result: RunResult | undefined;
+    const c = createController('jirafa-apiladora', r => { result = r; });
+    c.create(); advance(c, 659); c.pointerDown(240, 400); advance(c, 400); c.update(40_000);
+    expect(result).toMatchObject({ score: 1, accuracy: 1 });
+  });
+  it('Burro permite deshacer un empujón antes de resolver el nivel', () => {
+    let result: RunResult | undefined;
+    const c = createController('burro-de-carga', r => { result = r; });
+    c.create(); c.keyDown(key('ArrowLeft')); c.keyDown(key('u')); c.keyDown(key('ArrowUp')); c.update(60_000);
+    expect(result).toMatchObject({ score: 5 });
+  });
+  it('Panal no acepta respuestas mientras enseña el patrón', () => {
+    let result: RunResult | undefined;
+    const c = createController('panal-de-la-abeja', r => { result = r; });
+    c.create(); for (let i = 0; i < 6; i++) c.keyDown(key('1'));
+    advance(c, 2500); for (let i = 0; i < 3; i++) c.keyDown(key('5'));
+    c.update(60_000);
+    expect(result).toMatchObject({ score: 1, accuracy: 1 });
+  });
+  it('Panal ilumina la celda que después exige al jugador', () => {
+    let color = 0;
+    const circles: number[][] = [];
+    let fluent: object;
+    fluent = new Proxy({}, { get: (_target, prop) => (...args: number[]) => {
+      if (prop === 'fillStyle') color = args[0];
+      if (prop === 'fillCircle' && color === 0xfff7dc) circles.push(args);
+      return fluent;
+    } });
+    const scene = { add: new Proxy({}, { get: () => () => fluent }) } as unknown as Phaser.Scene;
+    const c = createVerticalSliceGame(scene, games.find(g => g.id === 'panal-de-la-abeja')!, () => undefined)!;
+    c.create(); c.update(500);
+    expect(circles.at(-1)).toEqual([240, 371, 15]);
+  });
+  it('Castor anima el lanzamiento y detecta el choque al impactar', () => {
+    let result: RunResult | undefined;
+    const c = createController('castor-lanzador', r => { result = r; });
+    c.create(); c.pointerDown(240, 400); advance(c, 160);
+    expect(result).toBeUndefined();
+    c.pointerDown(240, 400); advance(c, 160); advance(c, 600);
+    expect(result).toMatchObject({ score: 1, accuracy: 0 });
+  });
+});
+
+
+describe('niveles de Burro de Carga', () => {
+  it('los tres tableros tienen solución con empujones legales', () => {
+    let result: RunResult | undefined;
+    const c = createController('burro-de-carga', r => { result = r; });
+    c.create();
+    const directions = [[-1, 0, 'ArrowLeft'], [1, 0, 'ArrowRight'], [0, -1, 'ArrowUp'], [0, 1, 'ArrowDown']] as const;
+    for (const map of DONKEY_LEVELS) {
+      const goals = new Set<number>();
+      let player = 0;
+      const boxes: number[] = [];
+      map.forEach((row, y) => [...row].forEach((ch, x) => {
+        if (ch === 'G') goals.add(y * 7 + x);
+        if (ch === 'P') player = y * 7 + x;
+        if (ch === 'B') boxes.push(y * 7 + x);
+      }));
+      const queue = [{ player, boxes, path: [] as string[] }];
+      const seen = new Set<string>();
+      let solution: string[] | undefined;
+      for (let at = 0; at < queue.length; at++) {
+        const state = queue[at];
+        if (state.boxes.every(b => goals.has(b))) { solution = state.path; break; }
+        for (const [dx, dy, key] of directions) {
+          const next = state.player + dy * 7 + dx;
+          if (map[Math.floor(next / 7)]?.[next % 7] === '#') continue;
+          const occupied = state.boxes.includes(next), pushed = next + dy * 7 + dx;
+          if (occupied && (map[Math.floor(pushed / 7)]?.[pushed % 7] === '#' || state.boxes.includes(pushed))) continue;
+          const moved = state.boxes.map(b => b === next ? pushed : b).sort((a, b) => a - b);
+          const id = `${next}:${moved.join(',')}`;
+          if (seen.has(id)) continue;
+          seen.add(id); queue.push({ player: next, boxes: moved, path: [...state.path, key] });
+        }
+      }
+      expect(solution).toBeDefined();
+      for (const key of solution!) c.keyDown({ key, preventDefault() {} } as KeyboardEvent);
+      c.update(700);
+    }
+    c.update(60_000);
+    expect(result?.score).toBe(15);
   });
 });

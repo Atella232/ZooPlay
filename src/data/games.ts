@@ -36,9 +36,9 @@ type Row = [
 ];
 
 const rows: Row[] = [
-  ['Pingüino Escalador','Habilidad y arcade','Toca en el momento justo para girar alrededor del piolet y aterrizar en la zona verde. Un perfecto suma 10 m.','Distancia','m','higher','163,9 m',60,'timing','Oficial','🐧'],
+  ['Pingüino Escalador','Habilidad y arcade','Toca para soltar al pingüino del piolet y saltar a la plataforma. La trayectoria te ayuda: el centro suma 10 m. Tienes tres vidas.','Distancia','m','higher','163,9 m',60,'timing','Oficial','🐧'],
   ['Púas de Puercoespín','Habilidad y arcade','Dispara una púa móvil por un hueco libre sin chocar con las púas clavadas.','Puntos','puntos','higher','26',60,'aim','Vídeo','🦔'],
-  ['Lémur Giratorio','Habilidad y arcade','Engánchate en la zona roja de la curva y suelta cuando apuntes recto al tramo siguiente.','Puntos','puntos','higher','114',60,'swing','Vídeo + análisis','🐒'],
+  ['Lémur Giratorio','Habilidad y arcade','Mantén para balancearte en la liana y suelta para saltar a la plataforma. Con teclado, Espacio engancha y suelta. Tienes tres vidas.','Puntos','puntos','higher','114',60,'swing','Vídeo + análisis','🐒'],
   ['Libélula Espacial','Habilidad y arcade','Guía la libélula entre asteroides sin chocar.','Puntos','puntos','higher','61',60,'dodge','Vídeo','🪰'],
   ['Armadillo en Picado','Habilidad y arcade','Mantén para bajar por la torre en espiral y da toques suaves para girar.','Puntos','puntos','higher','462',60,'swerve','Vídeo','🦔'],
   ['Rana Saltarina','Habilidad y arcade','Salta siguiendo la trayectoria marcada y cae sobre la siguiente plataforma.','Puntos','puntos','higher','554',60,'flap','Vídeo','🐸'],

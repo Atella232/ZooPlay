@@ -1,3 +1,4 @@
+import { createGameChrome, drawPlayfield, animalGlyph, beginAnimalFrame } from '../presentation';
 import Phaser from 'phaser';
 import type { GameManifest } from '../../data/games';
 import type { DedicatedGame } from './VerticalSlice';
@@ -64,17 +65,12 @@ export class CatalogGame implements DedicatedGame {
   }
 
   create(): void {
-    this.scene.add.rectangle(240, 360, 480, 720, 0xf7f4e9);
-    this.scene.add.circle(45, 185, 88, 0xf2dfbc, 0.44);
-    this.scene.add.circle(440, 486, 118, 0xdce9d9, 0.4);
-    this.scene.add.text(27, 25, 'ZOOPLAY  /  JUEGO', { fontFamily: 'DM Mono, monospace', fontSize: '12px', color: '#718176', letterSpacing: 1.4 });
-    this.scene.add.text(27, 51, this.game.name, { fontFamily: 'DM Sans, sans-serif', fontSize: '27px', fontStyle: 'bold', color: '#213b32', wordWrap: { width: 405 } });
-    this.scoreText = this.scene.add.text(27, 103, `${this.game.metric}: 0`, { fontFamily: 'DM Mono, monospace', fontSize: '14px', color: '#263d34' });
-    this.timeText = this.scene.add.text(452, 103, this.timeLabel(this.game.durationSec * 1000), { fontFamily: 'DM Mono, monospace', fontSize: '14px', color: '#263d34' }).setOrigin(1, 0);
-    this.prompt = this.scene.add.text(240, 151, this.game.instructions, { fontFamily: 'DM Sans, sans-serif', fontSize: '14px', color: '#334f40', align: 'center', wordWrap: { width: 408 }, lineSpacing: 4 }).setOrigin(0.5);
-    this.feedback = this.scene.add.text(240, 543, '', { fontFamily: 'DM Sans, sans-serif', fontSize: '15px', fontStyle: 'bold', color: '#df6945', align: 'center', wordWrap: { width: 400 } }).setOrigin(0.5);
-    this.g = this.scene.add.graphics();
-    this.scene.add.rectangle(240, 632, 414, 92, 0xf0ede2, 0.84).setStrokeStyle(1, 0xe7e1d2);
+    const chrome = createGameChrome(this.scene, this.game, this.game.instructions);
+    this.g = chrome.graphics;
+    this.scoreText = chrome.scoreText;
+    this.timeText = chrome.timerText;
+    this.prompt = chrome.promptText;
+    this.feedback = chrome.feedbackText;
     this.initializeRule();
     this.draw();
   }
@@ -222,11 +218,11 @@ export class CatalogGame implements DedicatedGame {
   }
 
   private draw(): void {
+    beginAnimalFrame(this.scene);
     this.glyphIndex = 0;
     this.glyphs.forEach((glyph) => glyph.setVisible(false));
     const g = this.g;
-    g.clear();
-    g.fillStyle(0xfffdf6).lineStyle(2, 0xe7e1d2).fillRoundedRect(48, 226, 384, 294, 22).strokeRoundedRect(48, 226, 384, 294, 22);
+    drawPlayfield(g, this.game);
     const mechanic = this.game.mechanic;
     if (mechanic === 'target' || mechanic === 'aim' || mechanic === 'basket') this.drawTarget(g);
     else if (mechanic === 'timing' || mechanic === 'rhythm') this.drawTiming(g);
@@ -509,6 +505,7 @@ export class CatalogGame implements DedicatedGame {
   }
 
   private glyph(text: string, x: number, y: number, size = 18, color = '#263d34', fontFamily = 'DM Sans, sans-serif'): void {
+    if (animalGlyph(this.scene, text, x, y, size)) return;
     let label = this.glyphs[this.glyphIndex];
     if (!label) {
       label = this.scene.add.text(-100, -100, '', { fontFamily, fontSize: `${size}px`, color, align: 'center' }).setOrigin(0.5).setDepth(3);

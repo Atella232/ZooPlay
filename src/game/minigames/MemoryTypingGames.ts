@@ -1,3 +1,4 @@
+import { createGameChrome, drawPlayfield, animalGlyph, beginAnimalFrame } from '../presentation';
 import Phaser from 'phaser';
 import type { GameManifest } from '../../data/games';
 import type { RunResult } from '../ArcadeScene';
@@ -36,23 +37,15 @@ abstract class MemoryTypingGame implements DedicatedGame {
   }
 
   protected chrome(instructions: string): void {
-    this.scene.add.rectangle(240, 360, 480, 720, 0xf7f4e9);
-    this.scene.add.circle(50, 205, 92, 0xf2dfbc, 0.42);
-    this.scene.add.circle(440, 490, 120, 0xdce9d9, 0.48);
-    this.scene.add.text(28, 26, 'ZOOPLAY  /  PARTIDA', { fontFamily: 'DM Mono, monospace', fontSize: '12px', color: '#718176', letterSpacing: 1.4 });
-    this.scene.add.text(28, 53, this.game.name, { fontFamily: 'DM Sans, sans-serif', fontSize: '27px', fontStyle: 'bold', color: '#213b32', wordWrap: { width: 395 } });
-    this.scoreText = this.scene.add.text(28, 105, `${this.game.metric}: 0`, { fontFamily: 'DM Mono, monospace', fontSize: '14px', color: '#213b32' });
-    this.timerText = this.scene.add.text(452, 105, this.timeLabel(this.game.durationSec * 1000), { fontFamily: 'DM Mono, monospace', fontSize: '14px', color: '#213b32' }).setOrigin(1, 0);
-    this.promptText = this.scene.add.text(240, 165, instructions, { fontFamily: 'DM Sans, sans-serif', fontSize: '15px', fontStyle: 'bold', color: '#334f40', align: 'center', wordWrap: { width: 400 }, lineSpacing: 5 }).setOrigin(0.5);
-    this.feedbackText = this.scene.add.text(240, 544, '', { fontFamily: 'DM Sans, sans-serif', fontSize: '15px', fontStyle: 'bold', color: '#e26843', align: 'center', wordWrap: { width: 390 } }).setOrigin(0.5);
-    this.graphics = this.scene.add.graphics();
-    this.scene.add.rectangle(240, 633, 414, 92, 0xf0ede2, 0.86).setStrokeStyle(1, 0xe7e1d2);
+    const chrome = createGameChrome(this.scene, this.game, instructions);
+    this.graphics = chrome.graphics;
+    this.scoreText = chrome.scoreText;
+    this.timerText = chrome.timerText;
+    this.promptText = chrome.promptText;
+    this.feedbackText = chrome.feedbackText;
   }
 
-  protected panel(): void {
-    this.graphics.clear();
-    this.graphics.fillStyle(0xfffdf6).lineStyle(2, 0xe7e1d2).fillRoundedRect(48, 232, 384, 288, 22).strokeRoundedRect(48, 232, 384, 288, 22);
-  }
+  protected panel(): void { drawPlayfield(this.graphics, this.game); }
 
   protected tick(delta: number): boolean {
     if (this.ended) return true;
@@ -77,12 +70,13 @@ abstract class MemoryTypingGame implements DedicatedGame {
     return items;
   }
 
-  protected glyphFrame(): void {
+  protected glyphFrame(): void { beginAnimalFrame(this.scene);
     this.glyphCursor = 0;
     this.glyphs.forEach((glyph) => glyph.setVisible(false));
   }
 
   protected glyph(value: string, x: number, y: number, size = 20, color = '#263d34', font = 'DM Sans, sans-serif'): void {
+    if (animalGlyph(this.scene, value, x, y, size)) return;
     let glyph = this.glyphs[this.glyphCursor];
     if (!glyph) {
       glyph = this.scene.add.text(-100, -100, '', { fontFamily: font, fontSize: `${size}px`, color, align: 'center' }).setOrigin(0.5).setDepth(4);
@@ -252,7 +246,7 @@ class ChimpNumberGame extends MemoryTypingGame {
   }
 
   private newRound(): void {
-    this.size = Math.min(12, 4 + this.score / 4);
+    this.size = Math.min(12, 4 + Math.floor(this.score / 4));
     const slots = this.shuffle(Array.from({ length: 12 }, (_, index) => index));
     this.tiles = Array.from({ length: this.size }, (_, index) => {
       const slot = slots[index];
@@ -436,7 +430,7 @@ class ParrotDictationGame extends DigitKeypadGame {
   private digit = 0;
   private life = 3;
   private score = 0;
-  private windowMs = 1800;
+  private windowMs = 2600;
   private remainingMs = this.windowMs;
   private correct = 0;
   private errors = 0;
@@ -469,7 +463,7 @@ class ParrotDictationGame extends DigitKeypadGame {
   private press(digit: string): void {
     if (this.ended) return;
     if (digit === String(this.digit)) {
-      this.score += 1; this.correct += 1; this.feedbackText.setText('+1'); this.windowMs = Math.max(750, this.windowMs - 20);
+      this.score += 1; this.correct += 1; this.feedbackText.setText('+1'); this.windowMs = Math.max(1000, this.windowMs - 35);
     } else {
       this.errors += 1; this.life -= 1; this.feedbackText.setText(`Cifra incorrecta · ♥ ${this.life}`);
       if (!this.life) { this.finish(this.score, this.correct / Math.max(1, this.correct + this.errors)); return; }

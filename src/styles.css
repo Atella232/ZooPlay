@@ -257,3 +257,41 @@ h1 { margin-bottom: 7px; font-size: clamp(29px, 3.2vw, 37px); line-height: 1.1; 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
+
+/* Arcade presentation: preserve the canvas aspect ratio so touch targets align. */
+.game-overlay { background: radial-gradient(ellipse at 50% 15%, #254d52, #142e3e 85%); padding: 8px; }
+.game-mode-tag { color: #c5dfd1; font-size: 10px; }
+.game-overlay-top { width: min(480px, calc((100dvh - 112px) * 2 / 3), 100%); min-height: 30px; }
+.game-stage-shell { width: min(480px, calc((100dvh - 112px) * 2 / 3), 100%); }
+.game-stage-board { position: relative; border-radius: 22px; overflow: hidden; box-shadow: 0 20px 70px #07192366, 0 0 0 1px #ffffff22; }
+.phaser-mount { width: 100%; aspect-ratio: 2 / 3; height: auto; border-radius: 0; overflow: hidden; box-shadow: none; }
+.phaser-mount canvas { width: auto !important; height: auto !important; max-width: 100%; max-height: 100%; display: block; object-fit: initial; }
+.game-overlay-foot { color: #bdd3d2; font-size: 10px; padding-top: 3px; }
+.stage-toolbar { display: flex; gap: 6px; padding-top: 8px; justify-content: center; }
+.stage-toolbar button { border: 1px solid #ffffff28; color: #deeee8; background: #ffffff0c; border-radius: 10px; padding: 7px 9px; font: 600 10px var(--sans); cursor: pointer; flex: 1; white-space: nowrap; }
+.stage-toolbar button:disabled { opacity: .35; cursor: default; }
+.stage-toolbar button:hover:not(:disabled) { background: #ffffff22; }
+.stage-curtain { position: absolute; inset: 0; display: grid; place-items: center; padding: 18px; background: #15383d88; backdrop-filter: blur(5px); }
+.stage-ready-card { width: 100%; padding: 22px 18px; background: #fff9e9; border: 2px solid #ffffff; border-radius: 25px; text-align: center; box-shadow: 0 16px 45px #0e293c55; }
+.stage-ready-animal { width: 100px; height: 100px; display: block; margin: -10px auto 7px; filter: drop-shadow(0 7px 4px #7f997226); animation: animal-bob 2.8s ease-in-out infinite; }
+.stage-eyebrow { color: #699185; font: 600 8px var(--mono); letter-spacing: 1.2px; }
+.stage-ready-card h2 { font-size: clamp(17px, 2.5vw, 25px); color: #25483e; margin: 8px 0 12px; }
+.stage-ready-card p { color: #607369; font-size: 12px; line-height: 1.55; margin: 0 auto 15px; max-width: 310px; }
+.stage-control-hint { display: block; padding: 10px 8px; background: #e8efde; border-radius: 11px; color: #50746a; font: 600 9px var(--mono); line-height: 1.5; }
+.stage-start { display: flex; justify-content: center; align-items: center; gap: 20px; width: 100%; margin: 16px 0 11px; padding: 13px; border: 0; border-bottom: 4px solid #c3713f; border-radius: 14px; background: #f0a04e; color: #fff; font: 800 18px var(--sans); cursor: pointer; box-shadow: 0 5px 15px #d48a4026; }
+.stage-start:active { transform: translateY(2px); border-bottom-width: 2px; }
+.stage-start:disabled { opacity: .6; }
+.stage-ready-card small { color: #91a091; font-size: 9px; }
+.stage-countdown { position: absolute; inset: 0; display: grid; align-content: center; justify-items: center; background: #123b4055; pointer-events: auto; color: white; }
+.stage-countdown strong { font-size: 110px; line-height: 1; text-shadow: 0 6px 0 #254459; animation: countdown-pop .65s ease-out both; }
+.stage-countdown span { margin-top: 15px; font-weight: 800; letter-spacing: 3px; text-transform: uppercase; font-size: 13px; }
+.tile-illustration { width: 106px; height: 106px; object-fit: contain; filter: drop-shadow(0 7px 4px #364c3126); transition: transform .25s; }
+.game-tile:hover .tile-illustration { transform: translateY(-5px) rotate(-5deg); }
+.tile-art { background-image: radial-gradient(circle at 25% 25%, #ffffff70 0%, transparent 65%); }
+.intro-illustration { width: 150px; height: 150px; object-fit: contain; }
+.result-animal { width: 90px; height: 90px; background: transparent; }
+.result-animal img { width: 100%; height: 100%; }
+@keyframes animal-bob { 0%, 100% { transform: translateY(0) rotate(-3deg); } 50% { transform: translateY(-6px) rotate(3deg); } }
+@keyframes countdown-pop { 0% { opacity: 0; transform: scale(1.7); } 25% { opacity: 1; transform: scale(1); } 100% { transform: scale(.9); } }
+@media (max-width: 640px) { .tile-illustration { width: 90px; height: 90px; } .intro-illustration { width: 100px; height: 100px; } .stage-ready-animal { width: 80px; height: 80px; } .stage-ready-card { padding: 18px 13px; } .game-overlay-top { min-height: 30px; } }
+@media (prefers-reduced-motion: reduce) { .stage-ready-animal, .stage-countdown strong { animation: none; } }

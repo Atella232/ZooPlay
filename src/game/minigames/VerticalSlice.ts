@@ -1,3 +1,6 @@
+import { createPolishedClassicGame } from './PolishedClassicGames';
+import { animalKey } from '../animalArt';
+import { createGameChrome, drawPlayfield, animalGlyph, beginAnimalFrame } from '../presentation';
 import Phaser from 'phaser';
 import type { GameManifest } from '../../data/games';
 import type { RunResult } from '../ArcadeScene';
@@ -17,6 +20,7 @@ export interface DedicatedGame {
   pointerMove(x: number, y: number, isDown: boolean): void;
   pointerUp(x: number, y: number): void;
   keyDown(event: KeyboardEvent): void;
+  keyUp?(event: KeyboardEvent): void;
 }
 
 type Finish = (result: RunResult) => void;
@@ -37,11 +41,11 @@ export function createVerticalSliceGame(scene: Phaser.Scene, game: GameManifest,
   const args: [Phaser.Scene, GameManifest, Finish] = [scene, game, onFinish];
   switch (game.id) {
     case 'armadillo-en-picado':
+    case 'bingo-de-la-oveja': return createCatalogGame(...args);
     case 'foca-malabarista':
     case 'jirafa-apiladora':
     case 'escarabajo-pelotero':
-    case 'burro-de-carga':
-    case 'bingo-de-la-oveja': return createCatalogGame(...args);
+    case 'burro-de-carga': return createPolishedClassicGame(...args);
     case 'gallina-aleteadora':
     case 'murcielago-entre-pinchos':
     case 'arana-tejedora':
@@ -125,17 +129,12 @@ abstract class MiniGame implements DedicatedGame {
   constructor(protected scene: Phaser.Scene, protected game: GameManifest, protected onFinish: Finish) {}
 
   protected chrome(instructions: string): void {
-    this.scene.add.rectangle(240, 360, 480, 720, 0xf7f4e9);
-    this.scene.add.circle(50, 205, 92, 0xf2dfbc, 0.42);
-    this.scene.add.circle(440, 490, 120, 0xdce9d9, 0.48);
-    this.scene.add.text(28, 26, 'ZOOPLAY  /  PARTIDA', { fontFamily: 'DM Mono, monospace', fontSize: '12px', color: '#718176', letterSpacing: 1.4 });
-    this.scene.add.text(28, 53, this.game.name, { fontFamily: 'DM Sans, sans-serif', fontSize: '27px', fontStyle: 'bold', color: '#213b32', wordWrap: { width: 395 } });
-    this.scoreText = this.scene.add.text(28, 105, `${this.game.metric}: 0`, { fontFamily: 'DM Mono, monospace', fontSize: '14px', color: '#213b32' });
-    this.timerText = this.scene.add.text(452, 105, this.timeLabel(this.game.durationSec * 1000), { fontFamily: 'DM Mono, monospace', fontSize: '14px', color: '#213b32' }).setOrigin(1, 0);
-    this.promptText = this.scene.add.text(240, 164, instructions, { fontFamily: 'DM Sans, sans-serif', fontSize: '15px', fontStyle: 'bold', color: '#334f40', align: 'center', wordWrap: { width: 400 }, lineSpacing: 5 }).setOrigin(0.5);
-    this.feedbackText = this.scene.add.text(240, 544, '', { fontFamily: 'DM Sans, sans-serif', fontSize: '15px', fontStyle: 'bold', color: '#e26843', align: 'center', wordWrap: { width: 390 } }).setOrigin(0.5);
-    this.graphics = this.scene.add.graphics();
-    this.scene.add.rectangle(240, 633, 414, 92, 0xf0ede2, 0.86).setStrokeStyle(1, 0xe7e1d2);
+    const chrome = createGameChrome(this.scene, this.game, instructions);
+    this.graphics = chrome.graphics;
+    this.scoreText = chrome.scoreText;
+    this.timerText = chrome.timerText;
+    this.promptText = chrome.promptText;
+    this.feedbackText = chrome.feedbackText;
   }
 
   protected tick(delta: number): boolean {
@@ -152,11 +151,13 @@ abstract class MiniGame implements DedicatedGame {
   }
 
   protected beginGlyphFrame(): void {
+    beginAnimalFrame(this.scene);
     this.glyphCursor = 0;
     this.glyphs.forEach((glyph) => glyph.setVisible(false));
   }
 
   protected glyphText(text: string, x: number, y: number, size: number, color: string, fontFamily = 'DM Sans, sans-serif'): void {
+    if (animalGlyph(this.scene, text, x, y, size)) return;
     let glyph = this.glyphs[this.glyphCursor];
     if (!glyph) {
       glyph = this.scene.add.text(-100, -100, '', { fontFamily, fontSize: `${size}px`, color, align: 'center' }).setOrigin(0.5).setDepth(4);
@@ -503,79 +504,68 @@ class CricketRhythmGame extends MiniGame {
 
 class RotatingPinGame extends MiniGame {
   private rotor = 0;
-  private speed = 1.05;
   private pegs: number[] = [];
   private points = 0;
-  private readonly shotAngle = Math.PI / 2;
-
+  private level = 1;
+  private shots = 0;
+  private flight?: { angle: number; remaining: number };
+  private transition = 0;
+  private failed = false;
+  private get castor(): boolean { return this.game.id === 'castor-lanzador'; }
+  private get shotAngle(): number { return this.castor ? Math.PI / 2 : Math.PI / 2 + this.rotor; }
   create(): void {
-    const isCastor = this.game.id === 'castor-lanzador';
-    this.chrome(isCastor
-      ? 'Lanza dientes al tronco que gira. No choques con los que ya están clavados.'
-      : 'Dispara la púa móvil por un hueco libre entre las púas clavadas.');
-    this.pegs = isCastor ? [-2.7, -1.85, -0.95, -0.12, 0.75] : [-2.8, -2.05, -1.26, -0.46, 0.34, 1.14];
-    this.drawRotor();
+    this.chrome('Busca un hueco y toca para lanzar. Completa seis lanzamientos para pasar al siguiente nivel.');
+    this.newTarget(); this.drawRotor();
   }
-
+  private newTarget(): void { this.pegs = [-2.7, -1.7, -.7]; this.shots = 0; }
   update(delta: number): void {
     if (this.ended) return;
-    const expired = this.tick(delta);
-    this.rotor = (this.rotor + delta / 1000 * this.speed) % (Math.PI * 2);
-    this.speed = Math.min(2.7, 1.05 + this.points * 0.025);
+    if (this.tick(delta)) { this.finish(this.points, this.failed ? 0 : 1); return; }
+    if(this.transition > 0) {
+      this.transition -= delta;
+      if(this.transition <= 0) { if(this.failed) { this.finish(this.points, 0); return; } this.level++; this.newTarget(); }
+    } else {
+      this.rotor += delta / 1000 * Math.min(3.2, .85 + this.level * .18) * (this.level % 2 ? 1 : -1);
+      if(this.flight) {
+        this.flight.remaining -= delta;
+        if(this.flight.remaining <= 0) this.land();
+      }
+    }
     this.drawRotor();
-    if (expired) this.finish(this.points, this.points ? 1 : 0);
   }
-
+  private land(): void {
+    const angle = this.flight!.angle - (this.castor ? this.rotor : 0);
+    this.flight = undefined;
+    const collision = this.pegs.some(peg => Math.abs(Math.atan2(Math.sin(peg-angle),Math.cos(peg-angle))) < .2);
+    if(collision) { this.failed = true; this.transition = 550; this.feedbackText.setText('¡Chocaste! Espera al hueco libre.'); return; }
+    this.pegs.push(angle); this.points++; this.shots++;
+    this.feedbackText.setText('¡Lanzamiento perfecto! +1');
+    if(this.shots === 6) { this.transition = 650; this.feedbackText.setText('¡Nivel completado! La rotación cambia.'); }
+  }
   private drawRotor(): void {
-    this.beginGlyphFrame();
-    const g = this.graphics;
-    const castor = this.game.id === 'castor-lanzador';
-    g.clear();
-    g.fillStyle(castor ? 0xc59a67 : 0xe5e5da).fillCircle(240, 367, 104);
-    g.lineStyle(10, castor ? 0x936541 : 0xb8c5b5).strokeCircle(240, 367, 104);
-    g.lineStyle(5, castor ? 0x76543b : 0x8ca18f).strokeCircle(240, 367, 77);
-    g.fillStyle(castor ? 0x9e7048 : 0x7d9582).fillRoundedRect(221, 277, 38, 181, 16);
-    for (let stripe = -1; stripe <= 1; stripe += 1) {
-      g.lineStyle(2, castor ? 0xd5b087 : 0xbac7b9, 0.9).lineBetween(226 + stripe * 10, 291, 226 + stripe * 10, 444);
+    this.beginGlyphFrame(); drawPlayfield(this.graphics, this.game);
+    const g = this.graphics, cx = 240, cy = 373;
+    g.fillStyle(0x335344,.15).fillEllipse(cx+4,cy+9,192,190);
+    g.fillStyle(this.castor ? 0xcd9c62 : 0xdbbd8c).lineStyle(5,this.castor ? 0x94613d : 0x8e7753).fillCircle(cx,cy,87).strokeCircle(cx,cy,87);
+    if(this.castor) { for(const r of [25,48,67]) g.lineStyle(2,0x99653d,.55).strokeCircle(cx,cy,r); g.fillStyle(0x94613d).fillEllipse(cx-5,cy,13,22); }
+    else this.glyphText('🦔',cx,cy,68,'#315948');
+    for(const peg of this.pegs) {
+      const angle=peg+(this.castor?this.rotor:0),x=cx+Math.cos(angle)*117,y=cy+Math.sin(angle)*117;
+      g.lineStyle(5,0x715946).lineBetween(cx+Math.cos(angle)*77,cy+Math.sin(angle)*77,x,y);
+      g.fillStyle(0xffedb9).fillCircle(x,y,5);
     }
-    for (const peg of this.pegs) {
-      const angle = peg + this.rotor;
-      const inner = 78; const outer = 120;
-      const x1 = 240 + Math.cos(angle) * inner; const y1 = 367 + Math.sin(angle) * inner;
-      const x2 = 240 + Math.cos(angle) * outer; const y2 = 367 + Math.sin(angle) * outer;
-      g.lineStyle(5, 0x36453c).lineBetween(x1, y1, x2, y2);
-      g.fillStyle(0xe5ba60).fillCircle(x2, y2, 7);
-    }
-    const movingX = 240 + Math.cos(this.shotAngle) * 139;
-    const movingY = 367 + Math.sin(this.shotAngle) * 139;
-    g.lineStyle(5, 0xe46b4b).lineBetween(240, 367, movingX, movingY);
-    g.fillStyle(0xe46b4b).fillCircle(movingX, movingY, 10);
-    this.glyphText('↻', 240, 244, 29, '#526b59');
-    this.promptText.setText(castor ? 'Toca para clavar el siguiente diente sin chocar.' : 'Toca para disparar por un hueco libre.');
-    this.scoreLabel(this.points, 'puntos');
+    const angle=this.flight?.angle ?? this.shotAngle,radius=this.flight?87+64*Math.max(0,this.flight.remaining/160):151;
+    const x=cx+Math.cos(angle)*radius,y=cy+Math.sin(angle)*radius;
+    if(this.transition<=0) { g.lineStyle(5,0xe77c64).lineBetween(cx+Math.cos(angle)*(radius-20),cy+Math.sin(angle)*(radius-20),x,y);g.fillStyle(0xffc783).fillCircle(x,y,6); }
+    this.scoreLabel(this.points,'puntos');
+    this.promptText.setText(`Nivel ${this.level} · ${6-this.shots} lanzamientos restantes`);
+    this.glyphText(this.castor?'🦫':'🦔',85,629,32,'#315948');
+    this.glyphText('TOCA PARA LANZAR',266,625,17,'#315948');
+    this.glyphText('Evita las púas · seis aciertos cambian de nivel',240,676,12,'#315948');
   }
-
-  private shoot(): void {
-    if (this.ended) return;
-    const collision = this.pegs.some((peg) => {
-      const diff = Math.atan2(Math.sin(peg + this.rotor - this.shotAngle), Math.cos(peg + this.rotor - this.shotAngle));
-      return Math.abs(diff) < 0.23;
-    });
-    if (collision) {
-      this.feedbackText.setText('¡Chocaste con una púa!');
-      this.finish(this.points, this.points ? 1 : 0);
-      return;
-    }
-    this.pegs.push(this.shotAngle - this.rotor);
-    this.points += 1;
-    this.feedbackText.setText('¡Púa clavada en un hueco!');
-    const target = this.game.id === 'castor-lanzador' ? 54 : 26;
-    if (this.points >= target) this.finish(this.points, 1);
-    this.drawRotor();
-  }
-
-  pointerDown(_x: number, y: number): void { if (y >= 225 && y <= 520) this.shoot(); }
-  keyDown(event: KeyboardEvent): void { if (event.code === 'Space' || event.key === 'Enter') { event.preventDefault(); this.shoot(); } }
+  private shoot(): void { if(this.ended || this.flight || this.transition>0)return;this.flight={angle:this.shotAngle,remaining:160}; }
+  pointerDown(_x:number,y:number):void {if(y>=230)this.shoot();}
+  keyDown(e:KeyboardEvent):void {if(e.code==='Space'||e.key==='Enter'){e.preventDefault();this.shoot();}}
 }
 
 class WolfLauncherGame extends MiniGame {
@@ -1387,7 +1377,7 @@ class SparrowGame extends MiniGame {
   private birdX = 132;
   private points = 0;
   private pipes: Pipe[] = [];
-  private bird!: Phaser.GameObjects.Text;
+  private bird!: Phaser.GameObjects.Text | Phaser.GameObjects.Image;
   private started = false;
 
   create(): void {
@@ -1398,7 +1388,9 @@ class SparrowGame extends MiniGame {
       { x: 660, gapY: 415, passed: false },
       { x: 930, gapY: 305, passed: false },
     ];
-    this.bird = this.scene.add.text(this.birdX, this.birdY, '🐦', { fontFamily: 'sans-serif', fontSize: '43px' }).setOrigin(0.5);
+    this.bird = this.scene.textures?.exists(animalKey('🐦')!)
+      ? this.scene.add.image(this.birdX, this.birdY, animalKey('🐦')!).setDisplaySize(58, 58).setDepth(5)
+      : this.scene.add.text(this.birdX, this.birdY, '🐦', { fontFamily: 'sans-serif', fontSize: '43px' }).setOrigin(0.5);
     this.drawWorld();
   }
 
@@ -1416,7 +1408,7 @@ class SparrowGame extends MiniGame {
         pipe.passed = true;
         this.points += 1;
         this.scoreLabel(this.points, 'puntos');
-        if (this.points >= 15) { this.finish(this.points, 1); return; }
+
       }
       const inX = this.birdX + 15 > pipe.x && this.birdX - 15 < pipe.x + 66;
       const hitGap = this.birdY - 15 < pipe.gapY - 83 || this.birdY + 15 > pipe.gapY + 83;
@@ -1740,6 +1732,8 @@ class BeePatternGame extends MiniGame {
   private flashIndex = -1;
   private flashOn = false;
 
+  private get side(): number { return Math.min(5, 3 + Math.floor((this.level - 1) / 3)); }
+
   create(): void {
     this.chrome('Memoriza las celdas iluminadas y repítelas en el mismo orden. Cada nivel añade una más.');
     this.nextLevel();
@@ -1768,7 +1762,7 @@ class BeePatternGame extends MiniGame {
   }
 
   private nextLevel(): void {
-    this.sequence = Array.from({ length: Math.min(10, this.level + 2) }, () => Phaser.Math.Between(0, 8));
+    this.sequence = Array.from({ length: Math.min(12, this.level + 2) }, () => Phaser.Math.Between(0, this.side * this.side - 1));
     this.inputIndex = 0;
     this.flashIndex = -1;
     this.flashOn = false;
@@ -1780,14 +1774,15 @@ class BeePatternGame extends MiniGame {
 
   private drawGrid(): void {
     const g = this.graphics;
-    g.clear();
-    for (let index = 0; index < 9; index += 1) {
-      const col = index % 3; const row = Math.floor(index / 3);
-      const x = 103 + col * 137; const y = 285 + row * 86;
-      const isLit = this.phase === 'show' && this.flashIndex === index && this.flashOn;
+    drawPlayfield(g, this.game);
+    const cw = 411 / this.side, ch = 258 / this.side;
+    for (let index = 0; index < this.side * this.side; index += 1) {
+      const col = index % this.side; const row = Math.floor(index / this.side);
+      const x = 34.5 + cw / 2 + col * cw; const y = 242 + ch / 2 + row * ch;
+      const isLit = this.phase === 'show' && this.sequence[this.flashIndex] === index && this.flashOn;
       const isDone = this.phase === 'input' && index === this.sequence[this.inputIndex - 1];
       g.fillStyle(isLit ? 0xf0c254 : isDone ? 0x9ac493 : 0xfffdf5).lineStyle(3, isLit ? 0xe2a73e : 0xdedbce);
-      g.fillRoundedRect(x - 48, y - 33, 96, 66, 20).strokeRoundedRect(x - 48, y - 33, 96, 66, 20);
+      g.fillRoundedRect(x - cw * .35, y - ch * .38, cw * .7, ch * .76, 13).strokeRoundedRect(x - cw * .35, y - ch * .38, cw * .7, ch * .76, 13);
       g.fillStyle(isLit ? 0xfff7dc : 0x94b28b).fillCircle(x, y, isLit ? 15 : 10);
     }
     g.fillStyle(0xe9e1ca).fillRoundedRect(142, 493, 196, 25, 12);
@@ -1797,13 +1792,14 @@ class BeePatternGame extends MiniGame {
   }
 
   pointerDown(x: number, y: number): void {
-    if (this.ended || this.phase !== 'input' || y < 250 || y > 520 || x < 55 || x > 425) return;
-    const col = Phaser.Math.Clamp(Math.floor((x - 55) / 123.33), 0, 2);
-    const row = Phaser.Math.Clamp(Math.floor((y - 252) / 86), 0, 2);
-    this.choose(row * 3 + col);
+    if (this.ended || this.phase !== 'input' || y < 250 || y > 520 || x < 35 || x > 445) return;
+    const col = Phaser.Math.Clamp(Math.floor((x - 34.5) / (411 / this.side)), 0, this.side - 1);
+    const row = Phaser.Math.Clamp(Math.floor((y - 242) / (258 / this.side)), 0, this.side - 1);
+    this.choose(row * this.side + col);
   }
 
   private choose(index: number): void {
+    if (this.ended || this.phase !== 'input') return;
     if (index !== this.sequence[this.inputIndex]) {
       this.lives -= 1;
       this.feedbackText.setText(this.lives ? 'No era esa. Observa el patrón otra vez.' : '¡Se acabaron las vidas!');
@@ -1820,7 +1816,6 @@ class BeePatternGame extends MiniGame {
     if (this.inputIndex >= this.sequence.length) {
       this.level += 1;
       this.feedbackText.setText('¡Patrón correcto!');
-      if (this.level > 8) { this.finish(8, this.lives / 3); return; }
       this.nextLevel();
     } else this.drawGrid();
   }
